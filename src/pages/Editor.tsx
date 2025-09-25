@@ -2,8 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import 'ol/ol.css'
 import Map from 'ol/Map'
 import View from 'ol/View'
-import { OSM } from 'ol/source'
-import TileLayer from 'ol/layer/Tile'
 import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
 import Draw from 'ol/interaction/Draw'
@@ -12,6 +10,9 @@ import Select from 'ol/interaction/Select'
 import { click } from 'ol/events/condition'
 import GeoJSON from 'ol/format/GeoJSON'
 import { fromLonLat } from 'ol/proj'
+import olms from 'ol-mapbox-style'
+
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 
 export default function Editor() {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -21,23 +22,29 @@ export default function Editor() {
   const [mode, setMode] = useState<'select' | 'modify' | 'draw-polygon'>('draw-polygon')
 
   useEffect(() => {
-    if (!containerRef.current || mapRef.current) return
+    if (!containerRef.current || mapRef.current || !MAPBOX_TOKEN) return
 
-    const base = new TileLayer({ source: new OSM() })
     const map = new Map({
       target: containerRef.current,
-      layers: [base, vectorLayer],
       view: new View({ center: fromLonLat([2.1734, 41.3851]), zoom: 12, rotation: 0 }),
     })
     mapRef.current = map
 
-  // Interactions are added via the mode effect below
+    const styleUrl = 'mapbox://styles/mapbox/streets-v12'
+
+    olms(map, styleUrl, { accessToken: MAPBOX_TOKEN })
+      .then(() => {
+        map.addLayer(vectorLayer)
+      })
+      .catch((error) => {
+        console.error('Failed to load Mapbox style in OpenLayers editor', error)
+      })
 
     return () => {
       map.setTarget(undefined)
       mapRef.current = null
     }
-  }, [vectorLayer, vectorSrc])
+  }, [MAPBOX_TOKEN, vectorLayer])
 
   // Switch interactions when mode changes
   useEffect(() => {
@@ -77,6 +84,15 @@ export default function Editor() {
 
   const clearAll = () => {
     vectorSrc.clear()
+  }
+
+  if (!MAPBOX_TOKEN) {
+    return (
+      <div style={{ padding: 16 }}>
+        <h1>Zone Editor</h1>
+        <p>Missing VITE_MAPBOX_TOKEN. Configure it to load the Mapbox basemap in the editor.</p>
+      </div>
+    )
   }
 
   return (

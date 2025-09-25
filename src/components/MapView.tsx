@@ -29,16 +29,34 @@ export default function MapView() {
 
     mapRef.current = map
 
+    const applyLabelFontWeight = () => {
+      const style = map.getStyle()
+      if (!style?.layers) return
+
+      style.layers
+        .filter((layer) => layer.type === 'symbol')
+        .forEach((layer) => {
+          try {
+            map.setLayoutProperty(layer.id, 'text-font', ['DIN Pro Regular', 'Arial Unicode MS Regular'])
+          } catch (err) {
+            // Some layers might not expose text-font; ignore failures silently.
+          }
+        })
+    }
+
     map.on('load', () => {
       setStatus('Map loaded')
+      applyLabelFontWeight()
     })
-    map.on('error', (e) => {
+    map.on('styledata', applyLabelFontWeight)
+    map.on('error', (e: mapboxgl.ErrorEvent) => {
       // Surface useful error info
       console.error('Mapbox GL JS error:', e?.error || e)
       setStatus('Map error (see console)')
     })
 
     return () => {
+      map.off('styledata', applyLabelFontWeight)
       map.remove()
       mapRef.current = null
     }
@@ -55,7 +73,7 @@ export default function MapView() {
   return (
     <>
       <div ref={containerRef} style={{ position: 'fixed', inset: 0 }} />
-      <div style={{ position: 'fixed', top: 8, left: 8, padding: '4px 8px', background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 12, borderRadius: 4 }}>
+      <div style={{ position: 'fixed', top: 8, left: 8, padding: '4px 8px', background: 'rgba(0,0,0,0.5)', color: '#fff', fontSize: 12, borderRadius: 4, fontWeight: 400 }}>
         {status}
       </div>
     </>
