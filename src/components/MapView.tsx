@@ -26,7 +26,7 @@ export default function MapView() {
       container: containerRef.current,
       style: 'mapbox://styles/mapbox/streets-v12',
       center: [2.1734, 41.3851], // Barcelona [lng, lat]
-      zoom: 11,
+      zoom: 12,
     })
 
     mapRef.current = map
