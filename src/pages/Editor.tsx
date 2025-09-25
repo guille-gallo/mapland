@@ -11,8 +11,10 @@ import { click } from 'ol/events/condition'
 import GeoJSON from 'ol/format/GeoJSON'
 import { fromLonLat } from 'ol/proj'
 import olms from 'ol-mapbox-style'
+import type { FeatureCollection } from 'geojson'
 
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
+const ZONES_STORAGE_KEY = 'mapland:zones'
 
 export default function Editor() {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -20,6 +22,23 @@ export default function Editor() {
   const vectorSrc = useMemo(() => new VectorSource(), [])
   const vectorLayer = useMemo(() => new VectorLayer({ source: vectorSrc }), [vectorSrc])
   const [mode, setMode] = useState<'select' | 'modify' | 'draw-polygon'>('draw-polygon')
+  const geoJSONFormatter = useMemo(() => new GeoJSON(), [])
+
+  const loadSavedZones = () => {
+    const raw = localStorage.getItem(ZONES_STORAGE_KEY)
+    if (!raw) return
+    try {
+      const parsed = JSON.parse(raw) as FeatureCollection
+      const features = geoJSONFormatter.readFeatures(parsed, {
+        dataProjection: 'EPSG:4326',
+        featureProjection: 'EPSG:3857',
+      })
+      vectorSrc.clear()
+      vectorSrc.addFeatures(features)
+    } catch (error) {
+      console.error('Failed to load saved zones from storage', error)
+    }
+  }
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current || !MAPBOX_TOKEN) return
@@ -35,6 +54,7 @@ export default function Editor() {
     olms(map, styleUrl, { accessToken: MAPBOX_TOKEN })
       .then(() => {
         map.addLayer(vectorLayer)
+        loadSavedZones()
       })
       .catch((error) => {
         console.error('Failed to load Mapbox style in OpenLayers editor', error)
@@ -67,13 +87,16 @@ export default function Editor() {
     }
   }, [mode, vectorSrc])
 
-  const exportGeoJSON = () => {
-    const fmt = new GeoJSON()
+  const serializeFeatures = (): FeatureCollection => {
     const features = vectorSrc.getFeatures()
-    const fc = fmt.writeFeaturesObject(features, {
+    return geoJSONFormatter.writeFeaturesObject(features, {
       featureProjection: 'EPSG:3857',
       dataProjection: 'EPSG:4326',
     })
+  }
+
+  const exportGeoJSON = () => {
+    const fc = serializeFeatures()
     // For now, log and copy to clipboard if available
     console.log('Exported FeatureCollection', fc)
     if (navigator.clipboard) {
@@ -82,8 +105,28 @@ export default function Editor() {
     alert('Exported GeoJSON copied to clipboard (also in console).')
   }
 
+  const saveZones = () => {
+    const confirmed = window.confirm('Save current zones? This will overwrite the stored zones.')
+    if (!confirmed) return
+
+    try {
+      const fc = serializeFeatures()
+      localStorage.setItem(ZONES_STORAGE_KEY, JSON.stringify(fc))
+      window.dispatchEvent(new CustomEvent<FeatureCollection | null>('zones-updated', { detail: fc }))
+      alert('Zones saved locally.')
+    } catch (error) {
+      console.error('Failed to save zones', error)
+      alert('Failed to save zones. Check console for details.')
+    }
+  }
+
   const clearAll = () => {
+    const confirmed = window.confirm('Clear all zones? This action cannot be undone.')
+    if (!confirmed) return
+
     vectorSrc.clear()
+    localStorage.removeItem(ZONES_STORAGE_KEY)
+    window.dispatchEvent(new CustomEvent<FeatureCollection | null>('zones-updated', { detail: null }))
   }
 
   if (!MAPBOX_TOKEN) {
@@ -101,6 +144,7 @@ export default function Editor() {
         <button onClick={() => setMode('draw-polygon')} disabled={mode === 'draw-polygon'}>Draw polygon</button>
         <button onClick={() => setMode('modify')} disabled={mode === 'modify'}>Modify</button>
         <button onClick={() => setMode('select')} disabled={mode === 'select'}>Select</button>
+        <button onClick={saveZones}>Save zones</button>
         <button onClick={exportGeoJSON}>Export</button>
         <button onClick={clearAll}>Clear</button>
       </div>

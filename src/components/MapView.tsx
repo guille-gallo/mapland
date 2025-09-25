@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
+import type { FeatureCollection } from 'geojson'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
+const ZONES_STORAGE_KEY = 'mapland:zones'
 
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -29,6 +31,55 @@ export default function MapView() {
 
     mapRef.current = map
 
+    const getStoredZones = (): FeatureCollection | null => {
+      const raw = localStorage.getItem(ZONES_STORAGE_KEY)
+      if (!raw) return null
+      try {
+        const parsed = JSON.parse(raw) as FeatureCollection
+        if (parsed.type === 'FeatureCollection' && Array.isArray(parsed.features)) {
+          return parsed
+        }
+      } catch (error) {
+        console.error('Failed to parse stored zones', error)
+      }
+      return null
+    }
+
+    const upsertZonesSource = (fc: FeatureCollection | null) => {
+      const sourceId = 'zones'
+      const source = map.getSource(sourceId) as mapboxgl.GeoJSONSource | undefined
+      const featureCollectionData: FeatureCollection = fc ?? { type: 'FeatureCollection', features: [] }
+
+      if (source) {
+        source.setData(featureCollectionData)
+      } else {
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: featureCollectionData,
+        })
+
+        map.addLayer({
+          id: 'zones-fill',
+          type: 'fill',
+          source: sourceId,
+          paint: {
+            'fill-color': '#5b8def',
+            'fill-opacity': 0.3,
+          },
+        })
+
+        map.addLayer({
+          id: 'zones-outline',
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': '#2c63d6',
+            'line-width': 2,
+          },
+        })
+      }
+    }
+
     const applyLabelFontWeight = () => {
       const style = map.getStyle()
       if (!style?.layers) return
@@ -44,9 +95,29 @@ export default function MapView() {
         })
     }
 
+    const syncZonesFromStorage = (payload?: FeatureCollection | null) => {
+      if (payload) {
+        upsertZonesSource(payload)
+      } else {
+        upsertZonesSource(getStoredZones())
+      }
+    }
+
+    const onZonesUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<FeatureCollection | null>).detail ?? null
+      syncZonesFromStorage(detail)
+    }
+
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === ZONES_STORAGE_KEY) {
+        syncZonesFromStorage()
+      }
+    }
+
     map.on('load', () => {
       setStatus('Map loaded')
       applyLabelFontWeight()
+      syncZonesFromStorage()
     })
     map.on('styledata', applyLabelFontWeight)
     map.on('error', (e: mapboxgl.ErrorEvent) => {
@@ -55,8 +126,13 @@ export default function MapView() {
       setStatus('Map error (see console)')
     })
 
+    window.addEventListener('zones-updated', onZonesUpdated)
+    window.addEventListener('storage', onStorage)
+
     return () => {
       map.off('styledata', applyLabelFontWeight)
+      window.removeEventListener('zones-updated', onZonesUpdated)
+      window.removeEventListener('storage', onStorage)
       map.remove()
       mapRef.current = null
     }
