@@ -1,18 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import 'ol/ol.css'
 import Map from 'ol/Map'
 import View from 'ol/View'
 import VectorLayer from 'ol/layer/Vector'
 import VectorSource from 'ol/source/Vector'
+import Fill from 'ol/style/Fill'
+import Stroke from 'ol/style/Stroke'
+import Style from 'ol/style/Style'
 import Draw from 'ol/interaction/Draw'
 import Modify from 'ol/interaction/Modify'
 import Select from 'ol/interaction/Select'
 import { click } from 'ol/events/condition'
 import GeoJSON from 'ol/format/GeoJSON'
+import { unByKey } from 'ol/Observable'
 import { fromLonLat } from 'ol/proj'
 import olms from 'ol-mapbox-style'
 import type { FeatureCollection } from 'geojson'
 import { DEFAULT_ZONES } from '../data/default-zones'
+import { createExclusionFeatureCollection } from '../utils/geojson'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
 const ZONES_STORAGE_KEY = 'mapland:zones'
@@ -21,7 +26,41 @@ export default function Editor() {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<Map | null>(null)
   const vectorSrc = useMemo(() => new VectorSource(), [])
-  const vectorLayer = useMemo(() => new VectorLayer({ source: vectorSrc }), [vectorSrc])
+  const vectorStyle = useMemo(
+    () =>
+      new Style({
+        stroke: new Stroke({ color: '#2c63d6', width: 2 }),
+        fill: new Fill({ color: 'rgba(0, 0, 0, 0)' }),
+      }),
+    [],
+  )
+  const vectorLayer = useMemo(
+    () =>
+      new VectorLayer({
+        source: vectorSrc,
+        style: vectorStyle,
+        zIndex: 2,
+      }),
+    [vectorSrc, vectorStyle],
+  )
+  const exclusionSrc = useMemo(() => new VectorSource(), [])
+  const exclusionStyle = useMemo(
+    () =>
+      new Style({
+        fill: new Fill({ color: 'rgba(52,73,94,0.28)' }),
+        stroke: new Stroke({ color: 'rgba(153,153,153,0.6)', width: 1, lineDash: [3, 3] }),
+      }),
+    [],
+  )
+  const exclusionLayer = useMemo(
+    () =>
+      new VectorLayer({
+        source: exclusionSrc,
+        style: exclusionStyle,
+        zIndex: 1,
+      }),
+    [exclusionSrc, exclusionStyle],
+  )
   const [mode, setMode] = useState<'select' | 'modify' | 'draw-polygon'>('draw-polygon')
   const geoJSONFormatter = useMemo(() => new GeoJSON(), [])
 
@@ -65,6 +104,7 @@ export default function Editor() {
 
     olms(map, styleUrl, { accessToken: MAPBOX_TOKEN })
       .then(() => {
+        map.addLayer(exclusionLayer)
         map.addLayer(vectorLayer)
         loadSavedZones()
       })
@@ -99,13 +139,41 @@ export default function Editor() {
     }
   }, [mode, vectorSrc])
 
-  const serializeFeatures = (): FeatureCollection => {
+  const serializeFeatures = useCallback((): FeatureCollection => {
     const features = vectorSrc.getFeatures()
     return geoJSONFormatter.writeFeaturesObject(features, {
       featureProjection: 'EPSG:3857',
       dataProjection: 'EPSG:4326',
     })
-  }
+  }, [vectorSrc, geoJSONFormatter])
+
+  useEffect(() => {
+    const updateMask = () => {
+      const fc = serializeFeatures()
+      const exclusion = createExclusionFeatureCollection(fc)
+      exclusionSrc.clear()
+      if (exclusion) {
+        const features = geoJSONFormatter.readFeatures(exclusion, {
+          dataProjection: 'EPSG:4326',
+          featureProjection: 'EPSG:3857',
+        })
+        exclusionSrc.addFeatures(features)
+      }
+    }
+
+    updateMask()
+
+    const listeners = [
+      vectorSrc.on('addfeature', () => updateMask()),
+      vectorSrc.on('removefeature', () => updateMask()),
+      vectorSrc.on('changefeature', () => updateMask()),
+      vectorSrc.on('clear', () => updateMask()),
+    ]
+
+    return () => {
+      listeners.forEach((key) => unByKey(key))
+    }
+  }, [vectorSrc, exclusionSrc, geoJSONFormatter, serializeFeatures])
 
   const exportGeoJSON = () => {
     const fc = serializeFeatures()
