@@ -12,6 +12,7 @@ import GeoJSON from 'ol/format/GeoJSON'
 import { fromLonLat } from 'ol/proj'
 import olms from 'ol-mapbox-style'
 import type { FeatureCollection } from 'geojson'
+import { DEFAULT_ZONES } from '../data/default-zones'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
 const ZONES_STORAGE_KEY = 'mapland:zones'
@@ -24,20 +25,31 @@ export default function Editor() {
   const [mode, setMode] = useState<'select' | 'modify' | 'draw-polygon'>('draw-polygon')
   const geoJSONFormatter = useMemo(() => new GeoJSON(), [])
 
+  const loadFeatureCollection = (fc: FeatureCollection) => {
+    const features = geoJSONFormatter.readFeatures(fc, {
+      dataProjection: 'EPSG:4326',
+      featureProjection: 'EPSG:3857',
+    })
+    vectorSrc.clear()
+    vectorSrc.addFeatures(features)
+  }
+
   const loadSavedZones = () => {
     const raw = localStorage.getItem(ZONES_STORAGE_KEY)
-    if (!raw) return
+    if (!raw) {
+      loadFeatureCollection(DEFAULT_ZONES)
+      return
+    }
     try {
       const parsed = JSON.parse(raw) as FeatureCollection
-      const features = geoJSONFormatter.readFeatures(parsed, {
-        dataProjection: 'EPSG:4326',
-        featureProjection: 'EPSG:3857',
-      })
-      vectorSrc.clear()
-      vectorSrc.addFeatures(features)
+      if (parsed.type === 'FeatureCollection' && Array.isArray(parsed.features)) {
+        loadFeatureCollection(parsed)
+        return
+      }
     } catch (error) {
       console.error('Failed to load saved zones from storage', error)
     }
+    loadFeatureCollection(DEFAULT_ZONES)
   }
 
   useEffect(() => {
@@ -110,9 +122,9 @@ export default function Editor() {
     if (!confirmed) return
 
     try {
-      const fc = serializeFeatures()
-      localStorage.setItem(ZONES_STORAGE_KEY, JSON.stringify(fc))
-      window.dispatchEvent(new CustomEvent<FeatureCollection | null>('zones-updated', { detail: fc }))
+  const fc = serializeFeatures()
+  localStorage.setItem(ZONES_STORAGE_KEY, JSON.stringify(fc))
+  window.dispatchEvent(new CustomEvent<FeatureCollection | null>('zones-updated', { detail: fc }))
       alert('Zones saved locally.')
     } catch (error) {
       console.error('Failed to save zones', error)
