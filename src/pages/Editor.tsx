@@ -21,16 +21,26 @@ import { createExclusionFeatureCollection } from '../utils/geojson'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
 const ZONES_STORAGE_KEY = 'mapland:zones'
+const NEW_POLYGONS_STORAGE_KEY = 'mapland:new-polygons'
 
 export default function Editor() {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<Map | null>(null)
   const vectorSrc = useMemo(() => new VectorSource(), [])
+  const vectorDrawSrc = useMemo(() => new VectorSource(), [])
   const vectorStyle = useMemo(
     () =>
       new Style({
         stroke: new Stroke({ color: '#2c63d6', width: 2 }),
-        fill: new Fill({ color: 'rgba(0, 0, 0, 0)' }),
+        fill: new Fill({ color: 'rgba(0, 0, 0, 0)' }), // transparent.
+      }),
+    [],
+  )
+  const vectorDrawStyle = useMemo(
+    () =>
+      new Style({
+        stroke: new Stroke({ color: '#2c63d6', width: 2 }),
+        fill: new Fill({ color: 'red' }), // transparent.
       }),
     [],
   )
@@ -42,6 +52,15 @@ export default function Editor() {
         zIndex: 2,
       }),
     [vectorSrc, vectorStyle],
+  )
+   const vectorDrawLayer = useMemo(
+    () =>
+      new VectorLayer({
+        source: vectorDrawSrc,
+        style: vectorDrawStyle,
+        zIndex: 2,
+      }),
+    [vectorDrawSrc, vectorDrawStyle],
   )
   const exclusionSrc = useMemo(() => new VectorSource(), [])
   const exclusionStyle = useMemo(
@@ -73,6 +92,15 @@ export default function Editor() {
     vectorSrc.addFeatures(features)
   }
 
+  const loadNewPolygons = (fc: FeatureCollection) => {
+    const features = geoJSONFormatter.readFeatures(fc, {
+      dataProjection: 'EPSG:4326',
+      featureProjection: 'EPSG:3857',
+    })
+    vectorDrawSrc.clear()
+    vectorDrawSrc.addFeatures(features)
+  }
+
   const loadSavedZones = () => {
     const raw = localStorage.getItem(ZONES_STORAGE_KEY)
     if (!raw) {
@@ -91,6 +119,22 @@ export default function Editor() {
     loadFeatureCollection(DEFAULT_ZONES)
   }
 
+  const loadSavedNewPolygons = () => {
+    const raw = localStorage.getItem(NEW_POLYGONS_STORAGE_KEY)
+    if (!raw) {
+      return
+    }
+    try {
+      const parsed = JSON.parse(raw) as FeatureCollection
+      if (parsed.type === 'FeatureCollection' && Array.isArray(parsed.features)) {
+        loadNewPolygons(parsed)
+        return
+      }
+    } catch (error) {
+      console.error('Failed to load saved new polygons from storage', error)
+    }
+  }
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current || !MAPBOX_TOKEN) return
 
@@ -106,7 +150,9 @@ export default function Editor() {
       .then(() => {
         map.addLayer(exclusionLayer)
         map.addLayer(vectorLayer)
+        map.addLayer(vectorDrawLayer)
         loadSavedZones()
+        loadSavedNewPolygons()
       })
       .catch((error) => {
         console.error('Failed to load Mapbox style in OpenLayers editor', error)
@@ -116,7 +162,7 @@ export default function Editor() {
       map.setTarget(undefined)
       mapRef.current = null
     }
-  }, [MAPBOX_TOKEN, vectorLayer])
+  }, [MAPBOX_TOKEN, vectorLayer, vectorDrawLayer])
 
   // Switch interactions when mode changes
   useEffect(() => {
@@ -131,7 +177,7 @@ export default function Editor() {
     })
 
     if (mode === 'draw-polygon') {
-      map.addInteraction(new Draw({ source: vectorSrc, type: 'Polygon' }))
+      map.addInteraction(new Draw({ source: vectorDrawSrc, type: 'Polygon' }))
     } else if (mode === 'modify') {
       map.addInteraction(new Modify({ source: vectorSrc }))
     } else if (mode === 'select') {
@@ -147,10 +193,33 @@ export default function Editor() {
     })
   }, [vectorSrc, geoJSONFormatter])
 
+  const serializeNewPolygons = useCallback((): FeatureCollection => {
+    const features = vectorDrawSrc.getFeatures()
+    return geoJSONFormatter.writeFeaturesObject(features, {
+      featureProjection: 'EPSG:3857',
+      dataProjection: 'EPSG:4326',
+    })
+  }, [vectorDrawSrc, geoJSONFormatter])
+
+  const serializeAllFeatures = useCallback((): { zones: FeatureCollection; newPolygons: FeatureCollection } => {
+    return {
+      zones: serializeFeatures(),
+      newPolygons: serializeNewPolygons(),
+    }
+  }, [serializeFeatures, serializeNewPolygons])
+
   useEffect(() => {
     const updateMask = () => {
-      const fc = serializeFeatures()
-      const exclusion = createExclusionFeatureCollection(fc)
+      const zones = serializeFeatures()
+      const newPolygons = serializeNewPolygons()
+      
+      // Combine both feature collections for mask generation
+      const combinedFC: FeatureCollection = {
+        type: 'FeatureCollection',
+        features: [...zones.features, ...newPolygons.features]
+      }
+      
+      const exclusion = createExclusionFeatureCollection(combinedFC)
       exclusionSrc.clear()
       if (exclusion) {
         const features = geoJSONFormatter.readFeatures(exclusion, {
@@ -168,44 +237,60 @@ export default function Editor() {
       vectorSrc.on('removefeature', () => updateMask()),
       vectorSrc.on('changefeature', () => updateMask()),
       vectorSrc.on('clear', () => updateMask()),
+      vectorDrawSrc.on('addfeature', () => updateMask()),
+      vectorDrawSrc.on('removefeature', () => updateMask()),
+      vectorDrawSrc.on('changefeature', () => updateMask()),
+      vectorDrawSrc.on('clear', () => updateMask()),
     ]
 
     return () => {
       listeners.forEach((key) => unByKey(key))
     }
-  }, [vectorSrc, exclusionSrc, geoJSONFormatter, serializeFeatures])
+  }, [vectorSrc, vectorDrawSrc, exclusionSrc, geoJSONFormatter, serializeFeatures, serializeNewPolygons])
 
   const exportGeoJSON = () => {
-    const fc = serializeFeatures()
+    const allData = serializeAllFeatures()
     // For now, log and copy to clipboard if available
-    console.log('Exported FeatureCollection', fc)
+    console.log('Exported all data', allData)
     if (navigator.clipboard) {
-      navigator.clipboard.writeText(JSON.stringify(fc, null, 2)).catch(() => {})
+      navigator.clipboard.writeText(JSON.stringify(allData, null, 2)).catch(() => {})
     }
-    alert('Exported GeoJSON copied to clipboard (also in console).')
+    alert('Exported all data (zones and new polygons) copied to clipboard (also in console).')
   }
 
   const saveZones = () => {
-    const confirmed = window.confirm('Save current zones? This will overwrite the stored zones.')
+    const confirmed = window.confirm('Save current zones and new polygons? This will overwrite the stored data.')
     if (!confirmed) return
 
     try {
-  const fc = serializeFeatures()
-  localStorage.setItem(ZONES_STORAGE_KEY, JSON.stringify(fc))
-  window.dispatchEvent(new CustomEvent<FeatureCollection | null>('zones-updated', { detail: fc }))
-      alert('Zones saved locally.')
+      const zones = serializeFeatures()
+      const newPolygons = serializeNewPolygons()
+      
+      localStorage.setItem(ZONES_STORAGE_KEY, JSON.stringify(zones))
+      localStorage.setItem(NEW_POLYGONS_STORAGE_KEY, JSON.stringify(newPolygons))
+      
+      // Dispatch event with combined data for MapView
+      const combinedFC: FeatureCollection = {
+        type: 'FeatureCollection',
+        features: [...zones.features, ...newPolygons.features]
+      }
+      
+      window.dispatchEvent(new CustomEvent<FeatureCollection | null>('zones-updated', { detail: combinedFC }))
+      alert('Zones and new polygons saved locally.')
     } catch (error) {
-      console.error('Failed to save zones', error)
-      alert('Failed to save zones. Check console for details.')
+      console.error('Failed to save zones and new polygons', error)
+      alert('Failed to save data. Check console for details.')
     }
   }
 
   const clearAll = () => {
-    const confirmed = window.confirm('Clear all zones? This action cannot be undone.')
+    const confirmed = window.confirm('Clear all zones and new polygons? This action cannot be undone.')
     if (!confirmed) return
 
     vectorSrc.clear()
+    vectorDrawSrc.clear()
     localStorage.removeItem(ZONES_STORAGE_KEY)
+    localStorage.removeItem(NEW_POLYGONS_STORAGE_KEY)
     window.dispatchEvent(new CustomEvent<FeatureCollection | null>('zones-updated', { detail: null }))
   }
 

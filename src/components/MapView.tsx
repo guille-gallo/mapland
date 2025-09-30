@@ -7,6 +7,7 @@ import { DEFAULT_ZONES } from '../data/default-zones'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
 const ZONES_STORAGE_KEY = 'mapland:zones'
+const NEW_POLYGONS_STORAGE_KEY = 'mapland:new-polygons'
 
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -45,6 +46,29 @@ export default function MapView() {
         console.error('Failed to parse stored zones', error)
       }
       return DEFAULT_ZONES
+    }
+
+    const getStoredNewPolygons = (): FeatureCollection => {
+      const raw = localStorage.getItem(NEW_POLYGONS_STORAGE_KEY)
+      if (!raw) return { type: 'FeatureCollection', features: [] }
+      try {
+        const parsed = JSON.parse(raw) as FeatureCollection
+        if (parsed.type === 'FeatureCollection' && Array.isArray(parsed.features)) {
+          return parsed
+        }
+      } catch (error) {
+        console.error('Failed to parse stored new polygons', error)
+      }
+      return { type: 'FeatureCollection', features: [] }
+    }
+
+    const getCombinedFeatures = (): FeatureCollection => {
+      const zones = getStoredZones()
+      const newPolygons = getStoredNewPolygons()
+      return {
+        type: 'FeatureCollection',
+        features: [...zones.features, ...newPolygons.features]
+      }
     }
 
     const removeLayerIfExists = (id: string) => {
@@ -89,6 +113,55 @@ export default function MapView() {
         }
       } else {
         removeLayerIfExists('zones-outline')
+        removeSourceIfExists(sourceId)
+      }
+    }
+
+    const upsertNewPolygonsSource = (fc: FeatureCollection | null) => {
+      const sourceId = 'new-polygons'
+      const existing = map.getSource(sourceId) as mapboxgl.GeoJSONSource | undefined
+      const fillLayerId = 'new-polygons-fill'
+      const outlineLayerId = 'new-polygons-outline'
+
+      removeLayerIfExists(fillLayerId)
+      removeLayerIfExists(outlineLayerId)
+
+      if (fc && fc.features.length) {
+        if (existing) {
+          existing.setData(fc)
+        } else {
+          map.addSource(sourceId, {
+            type: 'geojson',
+            data: fc,
+          })
+        }
+
+        // Add fill layer for new polygons
+        if (!map.getLayer(fillLayerId)) {
+          map.addLayer({
+            id: fillLayerId,
+            type: 'fill',
+            source: sourceId,
+            paint: {
+              'fill-color': 'red',
+              'fill-opacity': 0.5,
+            },
+          })
+        }
+
+        // Add outline layer for new polygons
+        if (!map.getLayer(outlineLayerId)) {
+          map.addLayer({
+            id: outlineLayerId,
+            type: 'line',
+            source: sourceId,
+            paint: {
+              'line-color': '#2c63d6',
+              'line-width': 2,
+            },
+          })
+        }
+      } else {
         removeSourceIfExists(sourceId)
       }
     }
@@ -183,14 +256,29 @@ export default function MapView() {
     const scheduleSync = (data: FeatureCollection | null) => {
       if (debounceHandle) window.clearTimeout(debounceHandle)
       debounceHandle = window.setTimeout(() => {
-        upsertZonesSource(data)
-        upsertExclusionSource(data)
+        // When data is provided (from zones-updated event), it contains combined features
+        // We need to separate zones and new polygons, or use the combined data for exclusion
+        if (data) {
+          // If data is provided, use it for exclusion (it's already combined)
+          upsertExclusionSource(data)
+          // For zones and new polygons sources, load from storage separately
+          upsertZonesSource(getStoredZones())
+          upsertNewPolygonsSource(getStoredNewPolygons())
+        } else {
+          // If no data, load from storage and combine for exclusion
+          const zones = getStoredZones()
+          const newPolygons = getStoredNewPolygons()
+          const combined = getCombinedFeatures()
+          
+          upsertZonesSource(zones)
+          upsertNewPolygonsSource(newPolygons)
+          upsertExclusionSource(combined)
+        }
       }, 180) // debounce mask recompute
     }
 
     const syncZonesFromStorage = (payload?: FeatureCollection | null) => {
-      const data = payload === undefined ? getStoredZones() : payload
-      scheduleSync(data)
+      scheduleSync(payload ?? null)
     }
 
     const onZonesUpdated = (event: Event) => {
@@ -199,7 +287,7 @@ export default function MapView() {
     }
 
     const onStorage = (event: StorageEvent) => {
-      if (event.key === ZONES_STORAGE_KEY) {
+      if (event.key === ZONES_STORAGE_KEY || event.key === NEW_POLYGONS_STORAGE_KEY) {
         syncZonesFromStorage()
       }
     }
@@ -208,9 +296,13 @@ export default function MapView() {
       setStatus('Map loaded')
       applyLabelFontWeight()
       // Initial load: no debounce to render quickly
-      const initial = getStoredZones()
-      upsertZonesSource(initial)
-      upsertExclusionSource(initial, true)
+      const zones = getStoredZones()
+      const newPolygons = getStoredNewPolygons()
+      const combined = getCombinedFeatures()
+      
+      upsertZonesSource(zones)
+      upsertNewPolygonsSource(newPolygons)
+      upsertExclusionSource(combined, true)
     })
     map.on('styledata', applyLabelFontWeight)
     map.on('error', (e: mapboxgl.ErrorEvent) => {
