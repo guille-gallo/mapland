@@ -179,7 +179,9 @@ export default function Editor() {
     if (mode === 'draw-polygon') {
       map.addInteraction(new Draw({ source: vectorDrawSrc, type: 'Polygon' }))
     } else if (mode === 'modify') {
+      // Add modify interactions for both vector sources
       map.addInteraction(new Modify({ source: vectorSrc }))
+      map.addInteraction(new Modify({ source: vectorDrawSrc }))
     } else if (mode === 'select') {
       map.addInteraction(new Select({ condition: click }))
     }
