@@ -40,7 +40,7 @@ export default function Editor() {
     () =>
       new Style({
         stroke: new Stroke({ color: '#2c63d6', width: 2 }),
-        fill: new Fill({ color: 'red' }), // transparent.
+        fill: new Fill({ color: 'rgba(255, 0, 0, 0.5)' }), // red with 50% opacity to match MapView
       }),
     [],
   )
