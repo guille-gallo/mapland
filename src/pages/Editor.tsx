@@ -94,6 +94,7 @@ export default function Editor() {
   )
   const [mode, setMode] = useState<'default' | 'select' | 'draw-polygon'>('default')
   const [activeZoneType, setActiveZoneType] = useState<ZoneType | ''>('')
+  const [menuOpen, setMenuOpen] = useState(false)
   const geoJSONFormatter = useMemo(() => new GeoJSON(), [])
 
   const loadFeatureCollection = (fc: FeatureCollection) => {
@@ -378,36 +379,160 @@ export default function Editor() {
 
   return (
     <div style={{ width: '100%', height: '100vh' }}>
-      <div style={{ position: 'fixed', top: 8, left: 8, zIndex: 1, display: 'flex', gap: 8, background: 'rgba(255,255,255,0.9)', padding: '6px 8px', borderRadius: 6, alignItems: 'center' }}>
-        <select
-          value={activeZoneType}
-          onChange={(e) => {
-            const value = e.target.value as ZoneType | ''
-            setActiveZoneType(value)
-            if (value) {
-              setMode('draw-polygon')
-            } else {
-              setMode('default')
-            }
-          }}
-          style={{ 
-            padding: '6px 8px',
-            border: '1px solid #ccc',
-            borderRadius: '4px',
-            background: 'white',
-            cursor: 'pointer',
-            minWidth: '180px'
-          }}
-        >
-          <option value="">Select zone type to add</option>
-          <option value="danger">{ZONE_CONFIGS.danger.label}</option>
-          <option value="suggested">{ZONE_CONFIGS.suggested.label}</option>
-        </select>
-        <div style={{ width: 1, background: '#ccc', margin: '0 4px' }} />
-        <button onClick={saveZones}>Save zones</button>
-        <button onClick={exportGeoJSON}>Export</button>
-        <button onClick={clearAll}>Clear</button>
+      <style>{`
+        .editor-controls {
+          position: fixed;
+          bottom: 24px;
+          left: 50%;
+          transform: translateX(-50%);
+          z-index: 1;
+          display: flex;
+          gap: 8px;
+          background: rgba(255, 255, 255, 0.95);
+          padding: 8px;
+          border-radius: 24px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+          align-items: center;
+        }
+        
+        .zone-menu {
+          position: relative;
+          display: inline-block;
+        }
+        
+        .zone-menu-button {
+          padding: 8px 16px;
+          border: 1px solid #ccc;
+          border-radius: 20px;
+          background: white;
+          cursor: pointer;
+          font-size: 14px;
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          white-space: nowrap;
+        }
+        
+        .zone-menu-button:hover {
+          background: #f5f5f5;
+        }
+        
+        .zone-menu-dropdown {
+          position: absolute;
+          bottom: 100%;
+          left: 0;
+          margin-bottom: 8px;
+          background: white;
+          border: 1px solid #ccc;
+          border-radius: 8px;
+          box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+          min-width: 200px;
+          display: none;
+        }
+        
+        .zone-menu-dropdown.open {
+          display: block;
+        }
+        
+        .zone-menu-item {
+          padding: 10px 16px;
+          cursor: pointer;
+          border: none;
+          background: none;
+          width: 100%;
+          text-align: left;
+          font-size: 14px;
+        }
+        
+        .zone-menu-item:hover {
+          background: #f5f5f5;
+        }
+        
+        .zone-menu-item:first-child {
+          border-radius: 8px 8px 0 0;
+        }
+        
+        .zone-menu-item:last-child {
+          border-radius: 0 0 8px 8px;
+        }
+        
+        .action-button {
+          padding: 8px 16px;
+          border: 1px solid #ccc;
+          border-radius: 20px;
+          background: white;
+          cursor: pointer;
+          font-size: 14px;
+          white-space: nowrap;
+        }
+        
+        .action-button:hover {
+          background: #f5f5f5;
+        }
+        
+        @media (max-width: 768px) {
+          .editor-controls {
+            bottom: 16px;
+            left: 50%;
+            right: auto;
+            transform: translateX(-50%);
+            flex-wrap: nowrap;
+          }
+          
+          .zone-menu-dropdown {
+            left: 50%;
+            transform: translateX(-50%);
+          }
+        }
+      `}</style>
+      
+      <div className="editor-controls">
+        <div className="zone-menu">
+          <button
+            className="zone-menu-button"
+            onClick={() => setMenuOpen(!menuOpen)}
+          >
+            {activeZoneType ? ZONE_CONFIGS[activeZoneType].label : 'Add Zone'} ▾
+          </button>
+          <div className={`zone-menu-dropdown ${menuOpen ? 'open' : ''}`}>
+            <button
+              className="zone-menu-item"
+              onClick={() => {
+                setActiveZoneType('danger')
+                setMode('draw-polygon')
+                setMenuOpen(false)
+              }}
+            >
+              🔴 {ZONE_CONFIGS.danger.label}
+            </button>
+            <button
+              className="zone-menu-item"
+              onClick={() => {
+                setActiveZoneType('suggested')
+                setMode('draw-polygon')
+                setMenuOpen(false)
+              }}
+            >
+              🟢 {ZONE_CONFIGS.suggested.label}
+            </button>
+            <button
+              className="zone-menu-item"
+              onClick={() => {
+                setActiveZoneType('')
+                setMode('default')
+                setMenuOpen(false)
+              }}
+            >
+              ✋ Stop Drawing
+            </button>
+          </div>
+        </div>
+        
+        <button className="action-button" onClick={saveZones}>💾 Save</button>
+        <button className="action-button" onClick={exportGeoJSON}>📤 Export</button>
+        <button className="action-button" onClick={clearAll}>🗑️ Clear</button>
       </div>
+      
       <div ref={containerRef} style={{ position: 'fixed', inset: 0 }} />
     </div>
   )

@@ -44,7 +44,7 @@ npm run preview
 - **Map**: View saved zones with masked exclusion areas
 - **Edit zones**: Create and modify zones
   - Select a zone type from the dropdown and draw polygons on the map
-  - Click "Save zones" to persist changes
+  - Click "Save" to persist changes
 
 ### Notes
 - Zones are stored locally in the browser
