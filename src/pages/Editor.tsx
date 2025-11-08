@@ -14,6 +14,7 @@ import { click } from 'ol/events/condition'
 import GeoJSON from 'ol/format/GeoJSON'
 import { unByKey } from 'ol/Observable'
 import { fromLonLat } from 'ol/proj'
+import { defaults as defaultControls, Zoom } from 'ol/control'
 import olms from 'ol-mapbox-style'
 import type { FeatureCollection } from 'geojson'
 import { DEFAULT_ZONES } from '../data/default-zones'
@@ -80,7 +81,7 @@ export default function Editor() {
       }),
     [exclusionSrc, exclusionStyle],
   )
-  const [mode, setMode] = useState<'select' | 'modify' | 'draw-polygon'>('draw-polygon')
+  const [mode, setMode] = useState<'select' | 'modify' | 'draw-polygon'>('select')
   const geoJSONFormatter = useMemo(() => new GeoJSON(), [])
 
   const loadFeatureCollection = (fc: FeatureCollection) => {
@@ -141,13 +142,31 @@ export default function Editor() {
     const map = new Map({
       target: containerRef.current,
       view: new View({ center: fromLonLat([2.1734, 41.3851]), zoom: 12, rotation: 0 }),
+      controls: defaultControls().extend([
+        new Zoom({
+          className: 'ol-zoom-bottom',
+          zoomInTipLabel: 'Zoom in',
+          zoomOutTipLabel: 'Zoom out'
+        })
+      ])
     })
     mapRef.current = map
 
+    // Add CSS for bottom-right zoom controls
+    const style = document.createElement('style')
+    style.textContent = `
+      .ol-zoom-bottom {
+        left: unset !important;
+        right: 8px !important;
+        bottom: 32px !important;
+        top: unset !important;
+      }
+    `
+    document.head.appendChild(style)
+
     const styleUrl = 'mapbox://styles/mapbox/streets-v12'
 
-    olms(map, styleUrl, { accessToken: MAPBOX_TOKEN })
-      .then(() => {
+    olms(map, styleUrl, { accessToken: MAPBOX_TOKEN }).then(() => {
         map.addLayer(exclusionLayer)
         map.addLayer(vectorLayer)
         map.addLayer(vectorDrawLayer)

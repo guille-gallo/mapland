@@ -32,6 +32,9 @@ export default function MapView() {
       zoom: 11,
     })
 
+    // Add zoom controls
+    map.addControl(new mapboxgl.NavigationControl(), 'bottom-right')
+
     mapRef.current = map
 
     const getStoredZones = (): FeatureCollection => {
