@@ -4,6 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css'
 import type { FeatureCollection } from 'geojson'
 import { buildMaskWithTiming, featureCollectionHash } from '../utils/maskBuilder'
 import { DEFAULT_ZONES } from '../data/default-zones'
+import { ZONE_CONFIGS, type ZoneType } from '../types/zone'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
 const ZONES_STORAGE_KEY = 'mapland:zones'
@@ -32,6 +33,12 @@ export default function MapView() {
       zoom: 11,
     })
 
+    // Set cursor to grab/hand for navigation
+    const mapContainer = map.getContainer()
+    if (mapContainer) {
+      mapContainer.style.cursor = 'grab'
+    }
+
     // Add zoom controls
     map.addControl(new mapboxgl.NavigationControl(), 'bottom-right')
 
@@ -57,6 +64,14 @@ export default function MapView() {
       try {
         const parsed = JSON.parse(raw) as FeatureCollection
         if (parsed.type === 'FeatureCollection' && Array.isArray(parsed.features)) {
+          // Ensure backward compatibility: set default zoneType if missing
+          parsed.features = parsed.features.map(feature => ({
+            ...feature,
+            properties: {
+              ...feature.properties,
+              zoneType: feature.properties?.zoneType || 'danger'
+            }
+          }))
           return parsed
         }
       } catch (error) {
@@ -123,11 +138,13 @@ export default function MapView() {
     const upsertNewPolygonsSource = (fc: FeatureCollection | null) => {
       const sourceId = 'new-polygons'
       const existing = map.getSource(sourceId) as mapboxgl.GeoJSONSource | undefined
-      const fillLayerId = 'new-polygons-fill'
-      const outlineLayerId = 'new-polygons-outline'
 
-      removeLayerIfExists(fillLayerId)
-      removeLayerIfExists(outlineLayerId)
+      // Remove all zone-specific layers
+      const zoneTypes: ZoneType[] = ['danger', 'suggested']
+      zoneTypes.forEach(zoneType => {
+        removeLayerIfExists(`new-polygons-fill-${zoneType}`)
+        removeLayerIfExists(`new-polygons-outline-${zoneType}`)
+      })
 
       if (fc && fc.features.length) {
         if (existing) {
@@ -139,32 +156,48 @@ export default function MapView() {
           })
         }
 
-        // Add fill layer for new polygons
-        if (!map.getLayer(fillLayerId)) {
-          map.addLayer({
-            id: fillLayerId,
-            type: 'fill',
-            source: sourceId,
-            paint: {
-              'fill-color': 'red',
-              'fill-opacity': 0.5,
-            },
-          })
-        }
+        // Create layers for each zone type
+        zoneTypes.forEach(zoneType => {
+          const config = ZONE_CONFIGS[zoneType]
+          const fillLayerId = `new-polygons-fill-${zoneType}`
+          const outlineLayerId = `new-polygons-outline-${zoneType}`
 
-        // Add outline layer for new polygons
-        if (!map.getLayer(outlineLayerId)) {
-          map.addLayer({
-            id: outlineLayerId,
-            type: 'line',
-            source: sourceId,
-            paint: {
-              'line-color': '#2c63d6',
-              'line-width': 2,
-            },
-          })
-        }
+          // Add fill layer for this zone type
+          if (!map.getLayer(fillLayerId)) {
+            map.addLayer({
+              id: fillLayerId,
+              type: 'fill',
+              source: sourceId,
+              filter: ['==', ['get', 'zoneType'], zoneType],
+              paint: {
+                'fill-color': config.fillColor.replace(/rgba?\(([^)]+)\)/, (_, values) => {
+                  const parts = values.split(',').map((v: string) => v.trim())
+                  return `rgb(${parts[0]}, ${parts[1]}, ${parts[2]})`
+                }),
+                'fill-opacity': config.fillOpacity,
+              },
+            })
+          }
+
+          // Add outline layer for this zone type
+          if (!map.getLayer(outlineLayerId)) {
+            map.addLayer({
+              id: outlineLayerId,
+              type: 'line',
+              source: sourceId,
+              filter: ['==', ['get', 'zoneType'], zoneType],
+              paint: {
+                'line-color': config.color,
+                'line-width': 2,
+              },
+            })
+          }
+        })
       } else {
+        zoneTypes.forEach(zoneType => {
+          removeLayerIfExists(`new-polygons-fill-${zoneType}`)
+          removeLayerIfExists(`new-polygons-outline-${zoneType}`)
+        })
         removeSourceIfExists(sourceId)
       }
     }

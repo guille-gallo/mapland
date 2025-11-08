@@ -17,8 +17,10 @@ import { fromLonLat } from 'ol/proj'
 import { defaults as defaultControls, Zoom } from 'ol/control'
 import olms from 'ol-mapbox-style'
 import type { FeatureCollection } from 'geojson'
+import type { FeatureLike } from 'ol/Feature'
 import { DEFAULT_ZONES } from '../data/default-zones'
 import { createExclusionFeatureCollection } from '../utils/geojson'
+import { ZONE_CONFIGS, type ZoneType, type ZoneFeatureProperties } from '../types/zone'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
 const ZONES_STORAGE_KEY = 'mapland:zones'
@@ -27,8 +29,23 @@ const NEW_POLYGONS_STORAGE_KEY = 'mapland:new-polygons'
 export default function Editor() {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<Map | null>(null)
+  
+  // Single source for all zones (both old and new)
   const vectorSrc = useMemo(() => new VectorSource(), [])
   const vectorDrawSrc = useMemo(() => new VectorSource(), [])
+  
+  // Function to get style based on zone type
+  const getStyleForFeature = useCallback((feature: FeatureLike) => {
+    const properties = feature.getProperties() as ZoneFeatureProperties
+    const zoneType = properties.zoneType || 'danger' // Default to danger
+    const config = ZONE_CONFIGS[zoneType]
+    
+    return new Style({
+      stroke: new Stroke({ color: config.color, width: 2 }),
+      fill: new Fill({ color: config.fillColor }),
+    })
+  }, [])
+  
   const vectorStyle = useMemo(
     () =>
       new Style({
@@ -37,14 +54,7 @@ export default function Editor() {
       }),
     [],
   )
-  const vectorDrawStyle = useMemo(
-    () =>
-      new Style({
-        stroke: new Stroke({ color: '#2c63d6', width: 2 }),
-        fill: new Fill({ color: 'rgba(255, 0, 0, 0.5)' }), // red with 50% opacity to match MapView
-      }),
-    [],
-  )
+  
   const vectorLayer = useMemo(
     () =>
       new VectorLayer({
@@ -54,14 +64,15 @@ export default function Editor() {
       }),
     [vectorSrc, vectorStyle],
   )
-   const vectorDrawLayer = useMemo(
+  
+  const vectorDrawLayer = useMemo(
     () =>
       new VectorLayer({
         source: vectorDrawSrc,
-        style: vectorDrawStyle,
+        style: getStyleForFeature,
         zIndex: 2,
       }),
-    [vectorDrawSrc, vectorDrawStyle],
+    [vectorDrawSrc, getStyleForFeature],
   )
   const exclusionSrc = useMemo(() => new VectorSource(), [])
   const exclusionStyle = useMemo(
@@ -81,13 +92,21 @@ export default function Editor() {
       }),
     [exclusionSrc, exclusionStyle],
   )
-  const [mode, setMode] = useState<'select' | 'modify' | 'draw-polygon'>('select')
+  const [mode, setMode] = useState<'default' | 'select' | 'draw-polygon'>('default')
+  const [activeZoneType, setActiveZoneType] = useState<ZoneType | ''>('')
   const geoJSONFormatter = useMemo(() => new GeoJSON(), [])
 
   const loadFeatureCollection = (fc: FeatureCollection) => {
     const features = geoJSONFormatter.readFeatures(fc, {
       dataProjection: 'EPSG:4326',
       featureProjection: 'EPSG:3857',
+    })
+    // Ensure all features have a zoneType property (backward compatibility)
+    features.forEach(feature => {
+      const properties = feature.getProperties() as ZoneFeatureProperties
+      if (!properties.zoneType) {
+        feature.set('zoneType', 'danger')
+      }
     })
     vectorSrc.clear()
     vectorSrc.addFeatures(features)
@@ -97,6 +116,13 @@ export default function Editor() {
     const features = geoJSONFormatter.readFeatures(fc, {
       dataProjection: 'EPSG:4326',
       featureProjection: 'EPSG:3857',
+    })
+    // Ensure all features have a zoneType property (backward compatibility)
+    features.forEach(feature => {
+      const properties = feature.getProperties() as ZoneFeatureProperties
+      if (!properties.zoneType) {
+        feature.set('zoneType', 'danger')
+      }
     })
     vectorDrawSrc.clear()
     vectorDrawSrc.addFeatures(features)
@@ -195,16 +221,42 @@ export default function Editor() {
       }
     })
 
-    if (mode === 'draw-polygon') {
-      map.addInteraction(new Draw({ source: vectorDrawSrc, type: 'Polygon' }))
-    } else if (mode === 'modify') {
-      // Add modify interactions for both vector sources
-      map.addInteraction(new Modify({ source: vectorSrc }))
-      map.addInteraction(new Modify({ source: vectorDrawSrc }))
-    } else if (mode === 'select') {
-      map.addInteraction(new Select({ condition: click }))
+    // Set cursor style based on mode
+    const mapElement = map.getTargetElement()
+    if (mapElement) {
+      if (mode === 'default') {
+        mapElement.style.cursor = 'grab'
+      } else if (mode === 'draw-polygon') {
+        mapElement.style.cursor = ''
+      } else if (mode === 'select') {
+        mapElement.style.cursor = 'pointer'
+      }
     }
-  }, [mode, vectorSrc])
+
+    if (mode === 'draw-polygon' && activeZoneType) {
+      const draw = new Draw({ source: vectorDrawSrc, type: 'Polygon' })
+      
+      // Set zone type on newly drawn features
+      draw.on('drawend', (event) => {
+        const feature = event.feature
+        if (feature) {
+          feature.setProperties({ zoneType: activeZoneType })
+        }
+      })
+      
+      map.addInteraction(draw)
+    } else if (mode === 'select') {
+      const select = new Select({ condition: click })
+      map.addInteraction(select)
+      
+      // Add modify for selected features
+      const modify = new Modify({ 
+        features: select.getFeatures()
+      })
+      map.addInteraction(modify)
+    }
+    // default mode has no interactions - just allows map panning/zooming
+  }, [mode, vectorDrawSrc, activeZoneType])
 
   const serializeFeatures = useCallback((): FeatureCollection => {
     const features = vectorSrc.getFeatures()
@@ -326,10 +378,32 @@ export default function Editor() {
 
   return (
     <div style={{ width: '100%', height: '100vh' }}>
-      <div style={{ position: 'fixed', top: 8, left: 8, zIndex: 1, display: 'flex', gap: 8, background: 'rgba(255,255,255,0.9)', padding: '6px 8px', borderRadius: 6 }}>
-        <button onClick={() => setMode('draw-polygon')} disabled={mode === 'draw-polygon'}>Draw polygon</button>
-        <button onClick={() => setMode('modify')} disabled={mode === 'modify'}>Modify</button>
-        <button onClick={() => setMode('select')} disabled={mode === 'select'}>Select</button>
+      <div style={{ position: 'fixed', top: 8, left: 8, zIndex: 1, display: 'flex', gap: 8, background: 'rgba(255,255,255,0.9)', padding: '6px 8px', borderRadius: 6, alignItems: 'center' }}>
+        <select
+          value={activeZoneType}
+          onChange={(e) => {
+            const value = e.target.value as ZoneType | ''
+            setActiveZoneType(value)
+            if (value) {
+              setMode('draw-polygon')
+            } else {
+              setMode('default')
+            }
+          }}
+          style={{ 
+            padding: '6px 8px',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            background: 'white',
+            cursor: 'pointer',
+            minWidth: '180px'
+          }}
+        >
+          <option value="">Select zone type to add</option>
+          <option value="danger">{ZONE_CONFIGS.danger.label}</option>
+          <option value="suggested">{ZONE_CONFIGS.suggested.label}</option>
+        </select>
+        <div style={{ width: 1, background: '#ccc', margin: '0 4px' }} />
         <button onClick={saveZones}>Save zones</button>
         <button onClick={exportGeoJSON}>Export</button>
         <button onClick={clearAll}>Clear</button>
