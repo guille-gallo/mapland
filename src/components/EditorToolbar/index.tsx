@@ -26,7 +26,7 @@ export default function EditorToolbar({
             className="zone-menu-button"
             onClick={() => setMenuOpen(!menuOpen)}
           >
-            {activeZoneType ? ZONE_CONFIGS[activeZoneType].label : 'Add Zone'} ▾
+            {activeZoneType ? ZONE_CONFIGS[activeZoneType].label : 'Draw zone'} ▾
           </button>
           <div className={`zone-menu-dropdown ${menuOpen ? 'open' : ''}`}>
             <button

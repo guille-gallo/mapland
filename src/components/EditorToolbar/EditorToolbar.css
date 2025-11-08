@@ -29,6 +29,8 @@
   align-items: center;
   gap: 6px;
   white-space: nowrap;
+  min-width: 148px;
+  justify-content: space-between;
 }
 
 .zone-menu-button:hover {
@@ -38,7 +40,8 @@
 .zone-menu-dropdown {
   position: absolute;
   bottom: 100%;
-  left: 0;
+  left: 50%;
+  transform: translateX(-50%);
   margin-bottom: 8px;
   background: white;
   border: 1px solid #ccc;
@@ -91,14 +94,16 @@
 @media (max-width: 768px) {
   .editor-controls {
     bottom: 16px;
-    left: 50%;
-    right: auto;
-    transform: translateX(-50%);
-    flex-wrap: nowrap;
+    gap: 6px;
   }
   
-  .zone-menu-dropdown {
-    left: 50%;
-    transform: translateX(-50%);
+  .zone-menu-button,
+  .action-button {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+  
+  .zone-menu-button {
+    min-width: 160px;
   }
 }
