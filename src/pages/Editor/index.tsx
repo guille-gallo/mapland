@@ -21,7 +21,7 @@ import type { FeatureLike } from 'ol/Feature'
 import { DEFAULT_ZONES } from '../../data/default-zones'
 import { createExclusionFeatureCollection } from '../../utils/geojson'
 import { ZONE_CONFIGS, type ZoneType, type ZoneFeatureProperties } from '../../types/zone'
-import EditorToolbar from './EditorToolbar'
+import EditorToolbar from '../../components/EditorToolbar'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
 const ZONES_STORAGE_KEY = 'mapland:zones'
@@ -324,12 +324,34 @@ export default function Editor() {
 
   const exportGeoJSON = () => {
     const allData = serializeAllFeatures()
-    // For now, log and copy to clipboard if available
-    console.log('Exported all data', allData)
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(JSON.stringify(allData, null, 2)).catch(() => {})
+    
+    // Combine zones and newPolygons into a single FeatureCollection for geojson.io compatibility
+    const combinedFeatureCollection: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [
+        // Zones features with transparent fill (only border visible)
+        ...allData.zones.features.map(feature => ({
+          ...feature,
+          properties: {
+            ...feature.properties,
+            fill: 'transparent',
+            'fill-opacity': 0,
+            stroke: '#2c63d6',
+            'stroke-width': 2,
+            'stroke-opacity': 1
+          }
+        })),
+        // New polygons with their original styling
+        ...allData.newPolygons.features
+      ]
     }
-    alert('Exported all data (zones and new polygons) copied to clipboard (also in console).')
+    
+    // For now, log and copy to clipboard if available
+    console.log('Exported GeoJSON for geojson.io', combinedFeatureCollection)
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(JSON.stringify(combinedFeatureCollection, null, 2)).catch(() => {})
+    }
+    alert('Exported GeoJSON copied to clipboard! You can now paste it into geojson.io (also in console).')
   }
 
   const saveZones = () => {
