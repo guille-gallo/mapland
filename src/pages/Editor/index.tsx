@@ -23,6 +23,7 @@ import { createExclusionFeatureCollection } from '../../utils/geojson'
 import { ZONE_CONFIGS, type ZoneType, type ZoneFeatureProperties } from '../../types/zone'
 import EditorToolbar from '../../components/EditorToolbar'
 
+
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
 const ZONES_STORAGE_KEY = 'mapland:zones'
 const NEW_POLYGONS_STORAGE_KEY = 'mapland:new-polygons'
