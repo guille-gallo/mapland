@@ -25,6 +25,33 @@ export const ZONE_CONFIGS: Record<ZoneType, ZoneConfig> = {
   },
 }
 
+/**
+ * Properties stored on GeoJSON features (used in Editor and MapView)
+ */
 export interface ZoneFeatureProperties {
+  /** Unique identifier (UUID from database, or temporary client-side ID) */
+  id?: string
+  /** Display name of the zone */
+  name?: string
+  /** Zone classification */
   zoneType?: ZoneType
+  /** Message shown when user enters this zone (for mobile geofencing) */
+  message?: string | null
+  /** ISO timestamp of creation */
+  createdAt?: string
+  /** ISO timestamp of last update */
+  updatedAt?: string
+}
+
+/**
+ * Extended zone data structure for full zone management
+ * Used when working with database operations
+ */
+export interface ZoneData {
+  id?: string
+  name: string
+  zoneType: ZoneType
+  message?: string | null
+  createdAt?: string
+  updatedAt?: string
 }
