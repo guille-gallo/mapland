@@ -170,7 +170,8 @@ export default function Editor() {
     const map = new Map({
       target: containerRef.current,
       view: new View({ center: fromLonLat([2.1734, 41.3851]), zoom: 12, rotation: 0 }),
-      controls: defaultControls().extend([
+      // Disable default zoom control so we only use the custom bottom-right one
+      controls: defaultControls({ zoom: false }).extend([
         new Zoom({
           className: 'ol-zoom-bottom',
           zoomInTipLabel: 'Zoom in',
