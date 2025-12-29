@@ -16,12 +16,13 @@ import { unByKey } from 'ol/Observable'
 import { fromLonLat } from 'ol/proj'
 import { defaults as defaultControls, Zoom } from 'ol/control'
 import olms from 'ol-mapbox-style'
-import type { FeatureCollection } from 'geojson'
+import type { FeatureCollection, Polygon } from 'geojson'
 import type { FeatureLike } from 'ol/Feature'
 import { DEFAULT_ZONES } from '../../data/default-zones'
 import { createExclusionFeatureCollection } from '../../utils/geojson'
 import { ZONE_CONFIGS, type ZoneType, type ZoneFeatureProperties } from '../../types/zone'
 import EditorToolbar from '../../components/EditorToolbar'
+import { zonesApi } from '../../services/zonesApi'
 
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
@@ -96,6 +97,7 @@ export default function Editor() {
   )
   const [mode, setMode] = useState<'default' | 'select' | 'draw-polygon'>('default')
   const [activeZoneType, setActiveZoneType] = useState<ZoneType | ''>('')
+  const [isPublishing, setIsPublishing] = useState(false)
   const geoJSONFormatter = useMemo(() => new GeoJSON(), [])
 
   const loadFeatureCollection = (fc: FeatureCollection) => {
@@ -392,6 +394,49 @@ export default function Editor() {
     window.dispatchEvent(new CustomEvent<FeatureCollection | null>('zones-updated', { detail: null }))
   }
 
+  const publishToSupabase = async () => {
+    if (!zonesApi.isAvailable()) {
+      alert('Supabase is not configured. Please set up environment variables.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      'Publish all zones to Supabase? This will replace all zones in the database with your current zones.'
+    )
+    if (!confirmed) return
+
+    setIsPublishing(true)
+
+    try {
+      const zones = serializeFeatures()
+      const newPolygons = serializeNewPolygons()
+
+      // Combine all features and ensure they have required properties
+      const allFeatures = [...zones.features, ...newPolygons.features].map((feature, index) => ({
+        ...feature,
+        properties: {
+          ...feature.properties,
+          name: feature.properties?.name || `Zone ${index + 1}`,
+          zoneType: feature.properties?.zoneType || 'danger',
+          message: feature.properties?.message || null,
+        },
+      }))
+
+      const featureCollection: FeatureCollection<Polygon> = {
+        type: 'FeatureCollection',
+        features: allFeatures as FeatureCollection<Polygon>['features'],
+      }
+
+      await zonesApi.publishAll(featureCollection)
+      alert(`Successfully published ${allFeatures.length} zone(s) to Supabase!`)
+    } catch (error) {
+      console.error('Failed to publish zones:', error)
+      alert(`Failed to publish zones: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsPublishing(false)
+    }
+  }
+
   if (!MAPBOX_TOKEN) {
     return (
       <div style={{ padding: 16 }}>
@@ -414,6 +459,9 @@ export default function Editor() {
         onSave={saveZones}
         onExport={exportGeoJSON}
         onClear={clearAll}
+        onPublish={publishToSupabase}
+        isPublishing={isPublishing}
+        isSupabaseConfigured={zonesApi.isAvailable()}
       />
       <div ref={containerRef} style={{ position: 'fixed', inset: 0 }} />
     </div>

@@ -8,6 +8,9 @@ interface EditorToolbarProps {
   onSave: () => void
   onExport: () => void
   onClear: () => void
+  onPublish?: () => void
+  isPublishing?: boolean
+  isSupabaseConfigured?: boolean
 }
 
 export default function EditorToolbar({
@@ -16,6 +19,9 @@ export default function EditorToolbar({
   onSave,
   onExport,
   onClear,
+  onPublish,
+  isPublishing = false,
+  isSupabaseConfigured = false,
 }: EditorToolbarProps) {
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -61,6 +67,15 @@ export default function EditorToolbar({
         
         <button className="action-button" onClick={onSave}>💾 Save</button>
         <button className="action-button" onClick={onExport}>📤 Export</button>
+        {isSupabaseConfigured && onPublish && (
+          <button 
+            className="action-button publish-button" 
+            onClick={onPublish}
+            disabled={isPublishing}
+          >
+            {isPublishing ? '⏳ Publishing...' : '☁️ Publish'}
+          </button>
+        )}
         <button className="action-button" onClick={onClear}>🗑️ Clear</button>
       </div>
   )
