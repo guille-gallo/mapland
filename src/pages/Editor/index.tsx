@@ -422,14 +422,45 @@ export default function Editor() {
   }
 
   const clearAll = () => {
-    const confirmed = window.confirm('Clear all zones and new polygons? This action cannot be undone.')
+    const confirmed = window.confirm('Clear all danger and suggested zones? The boundary zone will be preserved.')
     if (!confirmed) return
 
+    // Find and preserve boundary features from vectorSrc
+    const boundaryFeatures = vectorSrc.getFeatures().filter(f => {
+      const props = f.getProperties() as ZoneFeatureProperties
+      return props.zoneType === 'boundary'
+    })
+
+    // Clear all and re-add boundary features
     vectorSrc.clear()
     vectorDrawSrc.clear()
-    localStorage.removeItem(ZONES_STORAGE_KEY)
+    
+    // Re-add boundary features
+    boundaryFeatures.forEach(f => vectorSrc.addFeature(f))
+
+    // Save the boundary-only state to localStorage
+    if (boundaryFeatures.length > 0) {
+      const boundaryFC: FeatureCollection = {
+        type: 'FeatureCollection',
+        features: boundaryFeatures.map(f => {
+          return geoJSONFormatter.writeFeatureObject(f, {
+            dataProjection: 'EPSG:4326',
+            featureProjection: 'EPSG:3857',
+          })
+        }) as Feature<Polygon>[]
+      }
+      localStorage.setItem(ZONES_STORAGE_KEY, JSON.stringify(boundaryFC))
+    } else {
+      // If no boundary, restore default
+      localStorage.setItem(ZONES_STORAGE_KEY, JSON.stringify(DEFAULT_ZONES))
+      loadFeatureCollection(DEFAULT_ZONES)
+    }
+    
     localStorage.removeItem(NEW_POLYGONS_STORAGE_KEY)
-    window.dispatchEvent(new CustomEvent<FeatureCollection | null>('zones-updated', { detail: null }))
+    
+    // Dispatch update event
+    const remainingFC = getCombinedFeatureCollection()
+    window.dispatchEvent(new CustomEvent<FeatureCollection | null>('zones-updated', { detail: remainingFC }))
   }
 
   const publishToSupabase = async () => {

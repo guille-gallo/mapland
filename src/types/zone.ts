@@ -1,4 +1,4 @@
-export type ZoneType = 'danger' | 'suggested'
+export type ZoneType = 'danger' | 'suggested' | 'boundary'
 
 export interface ZoneConfig {
   type: ZoneType
@@ -22,6 +22,13 @@ export const ZONE_CONFIGS: Record<ZoneType, ZoneConfig> = {
     color: 'transparent',
     fillColor: 'rgba(4, 170, 4, 0.5)',
     fillOpacity: 0.5,
+  },
+  boundary: {
+    type: 'boundary',
+    label: 'Boundary',
+    color: '#666666',
+    fillColor: 'transparent',
+    fillOpacity: 0,
   },
 }
 
