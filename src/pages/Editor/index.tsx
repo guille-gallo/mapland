@@ -47,29 +47,31 @@ export default function Editor() {
     const zoneType = properties.zoneType || 'danger' // Default to danger
     const config = ZONE_CONFIGS[zoneType]
     
+    // Boundary zones get transparent fill with gray outline
+    if (zoneType === 'boundary') {
+      return new Style({
+        stroke: new Stroke({ color: '#666666', width: 2 }),
+        fill: new Fill({ color: 'rgba(0, 0, 0, 0)' }),
+      })
+    }
+    
+    // For danger/suggested zones, derive stroke color from fill color
+    const strokeColor = config.fillColor.replace(/[\d.]+\)$/, '1)')
+    
     return new Style({
-      stroke: new Stroke({ color: config.color, width: 2 }),
+      stroke: new Stroke({ color: strokeColor, width: 2 }),
       fill: new Fill({ color: config.fillColor }),
     })
   }, [])
-  
-  const vectorStyle = useMemo(
-    () =>
-      new Style({
-        stroke: new Stroke({ color: '#2c63d6', width: 2 }),
-        fill: new Fill({ color: 'rgba(0, 0, 0, 0)' }), // transparent.
-      }),
-    [],
-  )
   
   const vectorLayer = useMemo(
     () =>
       new VectorLayer({
         source: vectorSrc,
-        style: vectorStyle,
+        style: getStyleForFeature,
         zIndex: 2,
       }),
-    [vectorSrc, vectorStyle],
+    [vectorSrc, getStyleForFeature],
   )
   
   const vectorDrawLayer = useMemo(
@@ -156,6 +158,25 @@ export default function Editor() {
     }
     loadFeatureCollection(DEFAULT_ZONES)
   }
+n
+  // Load zones from Supabase if available, otherwise from localStorage
+  const loadZonesFromSupabaseOrLocal = async () => {
+    if (zonesApi.isAvailable()) {
+      try {
+        const supabaseData = await zonesApi.getAllAsGeoJSON()
+        if (supabaseData.features.length > 0) {
+          loadFeatureCollection(supabaseData)
+          // Also update localStorage to keep in sync
+          localStorage.setItem(ZONES_STORAGE_KEY, JSON.stringify(supabaseData))
+          return
+        }
+      } catch (error) {
+        console.warn('Failed to load from Supabase, falling back to localStorage:', error)
+      }
+    }
+    // Fallback to localStorage
+    loadSavedZones()
+  }
 
   const loadSavedNewPolygons = () => {
     const raw = localStorage.getItem(NEW_POLYGONS_STORAGE_KEY)
@@ -204,11 +225,12 @@ export default function Editor() {
 
     const styleUrl = 'mapbox://styles/mapbox/streets-v12'
 
-    olms(map, styleUrl, { accessToken: MAPBOX_TOKEN }).then(() => {
+    olms(map, styleUrl, { accessToken: MAPBOX_TOKEN }).then(async () => {
         map.addLayer(exclusionLayer)
         map.addLayer(vectorLayer)
         map.addLayer(vectorDrawLayer)
-        loadSavedZones()
+        // Load zones from Supabase if available, otherwise localStorage
+        await loadZonesFromSupabaseOrLocal()
         loadSavedNewPolygons()
       })
       .catch((error) => {
@@ -498,6 +520,18 @@ export default function Editor() {
       }
 
       await zonesApi.publishAll(featureCollection)
+      
+      // After successful publish, merge new polygons into zones layer and clear new polygons
+      // This keeps the Editor in sync with what's now in Supabase
+      const newPolygonFeatures = vectorDrawSrc.getFeatures()
+      newPolygonFeatures.forEach(f => vectorSrc.addFeature(f))
+      vectorDrawSrc.clear()
+      
+      // Update localStorage to reflect the merged state
+      const mergedZones = serializeFeatures()
+      localStorage.setItem(ZONES_STORAGE_KEY, JSON.stringify(mergedZones))
+      localStorage.removeItem(NEW_POLYGONS_STORAGE_KEY)
+      
       alert(`Successfully published ${allFeatures.length} zone(s) to Supabase!`)
     } catch (error) {
       console.error('Failed to publish zones:', error)
