@@ -6,7 +6,8 @@ export const DEFAULT_ZONES: FeatureCollection = {
     {
       type: 'Feature',
       properties: {
-        zoneType: 'danger',
+        zoneType: 'boundary',
+        name: '',
       },
       geometry: {
         type: 'Polygon',

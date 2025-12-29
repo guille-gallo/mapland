@@ -263,6 +263,7 @@ export const zonesApi = {
 
   /**
    * Publish a FeatureCollection to the database (replaces all zones)
+   * Includes all zone types: danger, suggested, and boundary
    */
   async publishAll(featureCollection: FeatureCollection<Polygon>): Promise<Zone[]> {
     if (!supabase) {
@@ -272,16 +273,19 @@ export const zonesApi = {
     // Delete all existing zones first
     await this.deleteAll()
 
-    // Insert all new zones
-    const zonesToInsert = featureCollection.features.map((feature) => {
-      const props = feature.properties || {}
-      return {
-        name: props.name || 'Unnamed Zone',
-        zone_type: props.zoneType || 'danger',
-        geometry: feature.geometry,
-        message: props.message || null,
-      }
-    })
+    // Insert all zones (including boundary)
+    const zonesToInsert = featureCollection.features
+      .map((feature) => {
+        const props = feature.properties || {}
+        const zoneType = props.zoneType || 'danger'
+        return {
+          // Boundary zones can have empty name, others get 'Unnamed Zone' as fallback
+          name: zoneType === 'boundary' ? (props.name || '') : (props.name || 'Unnamed Zone'),
+          zone_type: zoneType,
+          geometry: feature.geometry,
+          message: props.message || null,
+        }
+      })
 
     if (zonesToInsert.length === 0) {
       return []
