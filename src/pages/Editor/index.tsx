@@ -25,6 +25,7 @@ import { createExclusionFeatureCollection } from '../../utils/geojson'
 import { ZONE_CONFIGS, type ZoneType, type ZoneFeatureProperties } from '../../types/zone'
 import EditorToolbar from '../../components/EditorToolbar'
 import ZonePropertiesPanel from './components/ZonePropertiesPanel'
+import ZoneListSidebar from './components/ZoneListSidebar'
 import { zonesApi } from '../../services/zonesApi'
 
 
@@ -102,6 +103,7 @@ export default function Editor() {
   const [activeZoneType, setActiveZoneType] = useState<ZoneType | ''>('')
   const [isPublishing, setIsPublishing] = useState(false)
   const [selectedFeature, setSelectedFeature] = useState<Feature<Geometry> | null>(null)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
   const selectRef = useRef<Select | null>(null)
   const geoJSONFormatter = useMemo(() => new GeoJSON(), [])
 
@@ -519,6 +521,25 @@ export default function Editor() {
     }
   }
 
+  // Handler to select zone from the sidebar list
+  const handleSelectZoneFromList = (feature: Feature<Geometry>) => {
+    setSelectedFeature(feature)
+    // Update the Select interaction to show the selection
+    if (selectRef.current) {
+      selectRef.current.getFeatures().clear()
+      selectRef.current.getFeatures().push(feature)
+    }
+    // Optionally zoom to the feature
+    if (mapRef.current && feature.getGeometry()) {
+      const extent = feature.getGeometry()!.getExtent()
+      mapRef.current.getView().fit(extent, {
+        padding: [100, 100, 100, 100],
+        duration: 500,
+        maxZoom: 16,
+      })
+    }
+  }
+
   return (
     <div style={{ width: '100%', height: '100vh' }}>
       <EditorToolbar
@@ -530,6 +551,14 @@ export default function Editor() {
         onPublish={publishToSupabase}
         isPublishing={isPublishing}
         isSupabaseConfigured={zonesApi.isAvailable()}
+      />
+      <ZoneListSidebar
+        vectorSrc={vectorSrc}
+        vectorDrawSrc={vectorDrawSrc}
+        selectedFeature={selectedFeature}
+        onSelectZone={handleSelectZoneFromList}
+        isOpen={isSidebarOpen}
+        onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
       />
       <ZonePropertiesPanel
         selectedFeature={selectedFeature}
