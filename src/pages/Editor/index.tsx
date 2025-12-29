@@ -18,10 +18,13 @@ import { defaults as defaultControls, Zoom } from 'ol/control'
 import olms from 'ol-mapbox-style'
 import type { FeatureCollection, Polygon } from 'geojson'
 import type { FeatureLike } from 'ol/Feature'
+import type Feature from 'ol/Feature'
+import type { Geometry } from 'ol/geom'
 import { DEFAULT_ZONES } from '../../data/default-zones'
 import { createExclusionFeatureCollection } from '../../utils/geojson'
 import { ZONE_CONFIGS, type ZoneType, type ZoneFeatureProperties } from '../../types/zone'
 import EditorToolbar from '../../components/EditorToolbar'
+import ZonePropertiesPanel from './components/ZonePropertiesPanel'
 import { zonesApi } from '../../services/zonesApi'
 
 
@@ -98,6 +101,8 @@ export default function Editor() {
   const [mode, setMode] = useState<'default' | 'select' | 'draw-polygon'>('default')
   const [activeZoneType, setActiveZoneType] = useState<ZoneType | ''>('')
   const [isPublishing, setIsPublishing] = useState(false)
+  const [selectedFeature, setSelectedFeature] = useState<Feature<Geometry> | null>(null)
+  const selectRef = useRef<Select | null>(null)
   const geoJSONFormatter = useMemo(() => new GeoJSON(), [])
 
   const loadFeatureCollection = (fc: FeatureCollection) => {
@@ -225,6 +230,7 @@ export default function Editor() {
         map.removeInteraction(i)
       }
     })
+    selectRef.current = null
 
     // Set cursor style based on mode
     const mapElement = map.getTargetElement()
@@ -239,19 +245,36 @@ export default function Editor() {
     }
 
     if (mode === 'draw-polygon' && activeZoneType) {
+      // Clear selection when entering draw mode
+      setSelectedFeature(null)
+      
       const draw = new Draw({ source: vectorDrawSrc, type: 'Polygon' })
       
       // Set zone type on newly drawn features
       draw.on('drawend', (event) => {
         const feature = event.feature
         if (feature) {
-          feature.setProperties({ zoneType: activeZoneType })
+          feature.setProperties({ 
+            zoneType: activeZoneType,
+            name: '',
+            message: null,
+          })
         }
       })
       
       map.addInteraction(draw)
     } else if (mode === 'select') {
-      const select = new Select({ condition: click })
+      const select = new Select({ 
+        condition: click,
+        layers: [vectorDrawLayer, vectorLayer],
+      })
+      selectRef.current = select
+      
+      select.on('select', (e) => {
+        const selected = e.selected[0] || null
+        setSelectedFeature(selected as Feature<Geometry> | null)
+      })
+      
       map.addInteraction(select)
       
       // Add modify for selected features
@@ -259,9 +282,22 @@ export default function Editor() {
         features: select.getFeatures()
       })
       map.addInteraction(modify)
+    } else {
+      // Default mode - allow clicking zones to select them
+      const select = new Select({ 
+        condition: click,
+        layers: [vectorDrawLayer, vectorLayer],
+      })
+      selectRef.current = select
+      
+      select.on('select', (e) => {
+        const selected = e.selected[0] || null
+        setSelectedFeature(selected as Feature<Geometry> | null)
+      })
+      
+      map.addInteraction(select)
     }
-    // default mode has no interactions - just allows map panning/zooming
-  }, [mode, vectorDrawSrc, activeZoneType])
+  }, [mode, vectorDrawSrc, vectorDrawLayer, vectorLayer, activeZoneType])
 
   const serializeFeatures = useCallback((): FeatureCollection => {
     const features = vectorSrc.getFeatures()
@@ -451,6 +487,38 @@ export default function Editor() {
     setMode(newMode)
   }
 
+  // Handler to update zone properties
+  const handleUpdateZoneProperties = (feature: Feature<Geometry>, properties: ZoneFeatureProperties) => {
+    feature.setProperties({
+      ...feature.getProperties(),
+      ...properties,
+    })
+    // Trigger a re-render of the layer to update styling if zoneType changed
+    vectorDrawSrc.changed()
+    vectorSrc.changed()
+  }
+
+  // Handler to delete a zone
+  const handleDeleteZone = (feature: Feature<Geometry>) => {
+    // Try to remove from both sources
+    vectorDrawSrc.removeFeature(feature)
+    vectorSrc.removeFeature(feature)
+    setSelectedFeature(null)
+    // Clear selection in the Select interaction
+    if (selectRef.current) {
+      selectRef.current.getFeatures().clear()
+    }
+  }
+
+  // Handler to close the properties panel
+  const handleClosePropertiesPanel = () => {
+    setSelectedFeature(null)
+    // Clear selection in the Select interaction
+    if (selectRef.current) {
+      selectRef.current.getFeatures().clear()
+    }
+  }
+
   return (
     <div style={{ width: '100%', height: '100vh' }}>
       <EditorToolbar
@@ -462,6 +530,12 @@ export default function Editor() {
         onPublish={publishToSupabase}
         isPublishing={isPublishing}
         isSupabaseConfigured={zonesApi.isAvailable()}
+      />
+      <ZonePropertiesPanel
+        selectedFeature={selectedFeature}
+        onUpdate={handleUpdateZoneProperties}
+        onDelete={handleDeleteZone}
+        onClose={handleClosePropertiesPanel}
       />
       <div ref={containerRef} style={{ position: 'fixed', inset: 0 }} />
     </div>
