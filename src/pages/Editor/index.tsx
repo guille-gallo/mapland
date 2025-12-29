@@ -16,12 +16,17 @@ import { unByKey } from 'ol/Observable'
 import { fromLonLat } from 'ol/proj'
 import { defaults as defaultControls, Zoom } from 'ol/control'
 import olms from 'ol-mapbox-style'
-import type { FeatureCollection } from 'geojson'
+import type { FeatureCollection, Polygon } from 'geojson'
 import type { FeatureLike } from 'ol/Feature'
+import type Feature from 'ol/Feature'
+import type { Geometry } from 'ol/geom'
 import { DEFAULT_ZONES } from '../../data/default-zones'
 import { createExclusionFeatureCollection } from '../../utils/geojson'
 import { ZONE_CONFIGS, type ZoneType, type ZoneFeatureProperties } from '../../types/zone'
 import EditorToolbar from '../../components/EditorToolbar'
+import ZonePropertiesPanel from './components/ZonePropertiesPanel'
+import ZoneListSidebar from './components/ZoneListSidebar'
+import { zonesApi } from '../../services/zonesApi'
 
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
@@ -96,6 +101,10 @@ export default function Editor() {
   )
   const [mode, setMode] = useState<'default' | 'select' | 'draw-polygon'>('default')
   const [activeZoneType, setActiveZoneType] = useState<ZoneType | ''>('')
+  const [isPublishing, setIsPublishing] = useState(false)
+  const [selectedFeature, setSelectedFeature] = useState<Feature<Geometry> | null>(null)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const selectRef = useRef<Select | null>(null)
   const geoJSONFormatter = useMemo(() => new GeoJSON(), [])
 
   const loadFeatureCollection = (fc: FeatureCollection) => {
@@ -223,6 +232,7 @@ export default function Editor() {
         map.removeInteraction(i)
       }
     })
+    selectRef.current = null
 
     // Set cursor style based on mode
     const mapElement = map.getTargetElement()
@@ -237,19 +247,36 @@ export default function Editor() {
     }
 
     if (mode === 'draw-polygon' && activeZoneType) {
+      // Clear selection when entering draw mode
+      setSelectedFeature(null)
+      
       const draw = new Draw({ source: vectorDrawSrc, type: 'Polygon' })
       
       // Set zone type on newly drawn features
       draw.on('drawend', (event) => {
         const feature = event.feature
         if (feature) {
-          feature.setProperties({ zoneType: activeZoneType })
+          feature.setProperties({ 
+            zoneType: activeZoneType,
+            name: '',
+            message: null,
+          })
         }
       })
       
       map.addInteraction(draw)
     } else if (mode === 'select') {
-      const select = new Select({ condition: click })
+      const select = new Select({ 
+        condition: click,
+        layers: [vectorDrawLayer, vectorLayer],
+      })
+      selectRef.current = select
+      
+      select.on('select', (e) => {
+        const selected = e.selected[0] || null
+        setSelectedFeature(selected as Feature<Geometry> | null)
+      })
+      
       map.addInteraction(select)
       
       // Add modify for selected features
@@ -257,9 +284,22 @@ export default function Editor() {
         features: select.getFeatures()
       })
       map.addInteraction(modify)
+    } else {
+      // Default mode - allow clicking zones to select them
+      const select = new Select({ 
+        condition: click,
+        layers: [vectorDrawLayer, vectorLayer],
+      })
+      selectRef.current = select
+      
+      select.on('select', (e) => {
+        const selected = e.selected[0] || null
+        setSelectedFeature(selected as Feature<Geometry> | null)
+      })
+      
+      map.addInteraction(select)
     }
-    // default mode has no interactions - just allows map panning/zooming
-  }, [mode, vectorDrawSrc, activeZoneType])
+  }, [mode, vectorDrawSrc, vectorDrawLayer, vectorLayer, activeZoneType])
 
   const serializeFeatures = useCallback((): FeatureCollection => {
     const features = vectorSrc.getFeatures()
@@ -392,6 +432,49 @@ export default function Editor() {
     window.dispatchEvent(new CustomEvent<FeatureCollection | null>('zones-updated', { detail: null }))
   }
 
+  const publishToSupabase = async () => {
+    if (!zonesApi.isAvailable()) {
+      alert('Supabase is not configured. Please set up environment variables.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      'Publish all zones to Supabase? This will replace all zones in the database with your current zones.'
+    )
+    if (!confirmed) return
+
+    setIsPublishing(true)
+
+    try {
+      const zones = serializeFeatures()
+      const newPolygons = serializeNewPolygons()
+
+      // Combine all features and ensure they have required properties
+      const allFeatures = [...zones.features, ...newPolygons.features].map((feature, index) => ({
+        ...feature,
+        properties: {
+          ...feature.properties,
+          name: feature.properties?.name || `Zone ${index + 1}`,
+          zoneType: feature.properties?.zoneType || 'danger',
+          message: feature.properties?.message || null,
+        },
+      }))
+
+      const featureCollection: FeatureCollection<Polygon> = {
+        type: 'FeatureCollection',
+        features: allFeatures as FeatureCollection<Polygon>['features'],
+      }
+
+      await zonesApi.publishAll(featureCollection)
+      alert(`Successfully published ${allFeatures.length} zone(s) to Supabase!`)
+    } catch (error) {
+      console.error('Failed to publish zones:', error)
+      alert(`Failed to publish zones: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    } finally {
+      setIsPublishing(false)
+    }
+  }
+
   if (!MAPBOX_TOKEN) {
     return (
       <div style={{ padding: 16 }}>
@@ -406,6 +489,57 @@ export default function Editor() {
     setMode(newMode)
   }
 
+  // Handler to update zone properties
+  const handleUpdateZoneProperties = (feature: Feature<Geometry>, properties: ZoneFeatureProperties) => {
+    feature.setProperties({
+      ...feature.getProperties(),
+      ...properties,
+    })
+    // Trigger a re-render of the layer to update styling if zoneType changed
+    vectorDrawSrc.changed()
+    vectorSrc.changed()
+  }
+
+  // Handler to delete a zone
+  const handleDeleteZone = (feature: Feature<Geometry>) => {
+    // Try to remove from both sources
+    vectorDrawSrc.removeFeature(feature)
+    vectorSrc.removeFeature(feature)
+    setSelectedFeature(null)
+    // Clear selection in the Select interaction
+    if (selectRef.current) {
+      selectRef.current.getFeatures().clear()
+    }
+  }
+
+  // Handler to close the properties panel
+  const handleClosePropertiesPanel = () => {
+    setSelectedFeature(null)
+    // Clear selection in the Select interaction
+    if (selectRef.current) {
+      selectRef.current.getFeatures().clear()
+    }
+  }
+
+  // Handler to select zone from the sidebar list
+  const handleSelectZoneFromList = (feature: Feature<Geometry>) => {
+    setSelectedFeature(feature)
+    // Update the Select interaction to show the selection
+    if (selectRef.current) {
+      selectRef.current.getFeatures().clear()
+      selectRef.current.getFeatures().push(feature)
+    }
+    // Optionally zoom to the feature
+    if (mapRef.current && feature.getGeometry()) {
+      const extent = feature.getGeometry()!.getExtent()
+      mapRef.current.getView().fit(extent, {
+        padding: [100, 100, 100, 100],
+        duration: 500,
+        maxZoom: 16,
+      })
+    }
+  }
+
   return (
     <div style={{ width: '100%', height: '100vh' }}>
       <EditorToolbar
@@ -414,6 +548,23 @@ export default function Editor() {
         onSave={saveZones}
         onExport={exportGeoJSON}
         onClear={clearAll}
+        onPublish={publishToSupabase}
+        isPublishing={isPublishing}
+        isSupabaseConfigured={zonesApi.isAvailable()}
+      />
+      <ZoneListSidebar
+        vectorSrc={vectorSrc}
+        vectorDrawSrc={vectorDrawSrc}
+        selectedFeature={selectedFeature}
+        onSelectZone={handleSelectZoneFromList}
+        isOpen={isSidebarOpen}
+        onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+      />
+      <ZonePropertiesPanel
+        selectedFeature={selectedFeature}
+        onUpdate={handleUpdateZoneProperties}
+        onDelete={handleDeleteZone}
+        onClose={handleClosePropertiesPanel}
       />
       <div ref={containerRef} style={{ position: 'fixed', inset: 0 }} />
     </div>
