@@ -158,7 +158,7 @@ export default function Editor() {
     }
     loadFeatureCollection(DEFAULT_ZONES)
   }
-n
+
   // Load zones from Supabase if available, otherwise from localStorage
   const loadZonesFromSupabaseOrLocal = async () => {
     if (zonesApi.isAvailable()) {
