@@ -440,15 +440,11 @@ export default function Editor() {
 
     // Save the boundary-only state to localStorage
     if (boundaryFeatures.length > 0) {
-      const boundaryFC: FeatureCollection = {
-        type: 'FeatureCollection',
-        features: boundaryFeatures.map(f => {
-          return geoJSONFormatter.writeFeatureObject(f, {
-            dataProjection: 'EPSG:4326',
-            featureProjection: 'EPSG:3857',
-          })
-        }) as Feature<Polygon>[]
-      }
+      // Use the GeoJSON formatter to serialize boundary features
+      const boundaryFC = geoJSONFormatter.writeFeaturesObject(boundaryFeatures, {
+        dataProjection: 'EPSG:4326',
+        featureProjection: 'EPSG:3857',
+      })
       localStorage.setItem(ZONES_STORAGE_KEY, JSON.stringify(boundaryFC))
     } else {
       // If no boundary, restore default
@@ -458,8 +454,13 @@ export default function Editor() {
     
     localStorage.removeItem(NEW_POLYGONS_STORAGE_KEY)
     
-    // Dispatch update event
-    const remainingFC = getCombinedFeatureCollection()
+    // Dispatch update event with remaining features
+    const zones = serializeFeatures()
+    const newPolygons = serializeNewPolygons()
+    const remainingFC: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [...zones.features, ...newPolygons.features]
+    }
     window.dispatchEvent(new CustomEvent<FeatureCollection | null>('zones-updated', { detail: remainingFC }))
   }
 
