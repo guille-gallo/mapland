@@ -153,12 +153,12 @@ Check if a coordinate is inside any zone.
 
 | Task | Description | Status |
 |------|-------------|--------|
-| 3.1 | Add zone metadata panel (name, message, type) | ⬜ |
-| 3.2 | Implement zone list sidebar with edit/delete | ⬜ |
-| 3.3 | Add "Publish" button to sync to Supabase | ⬜ |
-| 3.4 | Keep localStorage as draft/offline fallback | ⬜ |
-| 3.5 | Add zone selection to edit properties | ⬜ |
-| 3.6 | Add individual zone delete functionality | ⬜ |
+| 3.1 | Add zone metadata panel (name, message, type) | ✅ |
+| 3.2 | Implement zone list sidebar with edit/delete | ✅ |
+| 3.3 | Add "Publish" button to sync to Supabase | ✅ |
+| 3.4 | Keep localStorage as draft/offline fallback | ✅ |
+| 3.5 | Add zone selection to edit properties | ✅ |
+| 3.6 | Add individual zone delete functionality | ✅ |
 
 **UI Mockup:**
 ```
@@ -188,25 +188,22 @@ Check if a coordinate is inside any zone.
 
 | Task | Description | Status |
 |------|-------------|--------|
-| 4.1 | Fetch zones from Supabase API on load | ⬜ |
-| 4.2 | Add zone click handler to show name/message | ⬜ |
-| 4.3 | Optional: Show user location (if granted) | ⬜ |
-| 4.4 | Add loading/error states | ⬜ |
+| 4.1 | Fetch zones from Supabase API on load | ✅ |
+| 4.2 | Add zone click handler to show name/message | ✅ |
+| 4.3 | Optional: Show user location (if granted) | ✅ |
+| 4.4 | Add loading/error states | ✅ |
 
 ---
-
-//TODO:
-Selections on view screen (Mapbox).
 
 ### Phase 5: Mobile Integration Preparation
 **Goal**: Document and prepare for mobile app integration
 
 | Task | Description | Status |
 |------|-------------|--------|
-| 5.1 | Create API documentation (OpenAPI/Swagger) | ⬜ |
-| 5.2 | Add CORS configuration for mobile app domain | ⬜ |
-| 5.3 | Create example mobile integration code | ⬜ |
-| 5.4 | Document geofencing implementation patterns | ⬜ |
+| 5.1 | Create API documentation (OpenAPI/Swagger) | ✅ |
+| 5.2 | Add CORS configuration for mobile app domain | ✅ |
+| 5.3 | Create example mobile integration code | ✅ |
+| 5.4 | Document geofencing implementation patterns | ✅ |
 
 ---
 

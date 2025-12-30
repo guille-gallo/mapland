@@ -299,6 +299,15 @@ if (inZone) {
 }
 ```
 
+📱 **For full mobile integration guides**, see [docs/mobile-integration.md](docs/mobile-integration.md):
+- React Native implementation with hooks
+- iOS (Swift) implementation  
+- Android (Kotlin) implementation
+- Client-side geofencing with Turf.js
+- Best practices and troubleshooting
+
+📄 **OpenAPI Specification**: [docs/api/openapi.yaml](docs/api/openapi.yaml)
+
 ## Data Persistence
 
 ### Priority Order (MapView)

@@ -1,0 +1,290 @@
+openapi: 3.0.3
+info:
+  title: Mapland Zones API
+  description: |
+    REST API for geofencing zone management. 
+    
+    Use these endpoints to fetch zones and check if coordinates are inside any zone.
+  version: 1.0.0
+  contact:
+    name: Mapland
+    url: https://mapland.vercel.app
+
+servers:
+  - url: https://mapland.vercel.app/api
+    description: Production server
+  - url: http://localhost:5173/api
+    description: Local development
+
+tags:
+  - name: Zones
+    description: Zone management and geofencing operations
+
+paths:
+  /zones:
+    get:
+      tags:
+        - Zones
+      summary: Get all zones
+      description: Returns all zones as a GeoJSON FeatureCollection
+      operationId: getZones
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ZonesGeoJSON'
+              example:
+                type: FeatureCollection
+                features:
+                  - type: Feature
+                    id: "550e8400-e29b-41d4-a716-446655440000"
+                    properties:
+                      name: "Beach Restricted Area"
+                      zoneType: "danger"
+                      message: "Swimming prohibited in this area"
+                      createdAt: "2025-12-30T10:30:00Z"
+                      updatedAt: "2025-12-30T10:30:00Z"
+                    geometry:
+                      type: Polygon
+                      coordinates:
+                        - - [2.17, 41.38]
+                          - [2.18, 41.38]
+                          - [2.18, 41.39]
+                          - [2.17, 41.39]
+                          - [2.17, 41.38]
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /zones/check:
+    post:
+      tags:
+        - Zones
+      summary: Check point in zones
+      description: |
+        Check if a geographic coordinate is inside any zone.
+        
+        Uses PostGIS `ST_Contains` for accurate spatial queries.
+      operationId: checkPointInZones
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PointCheckRequest'
+            example:
+              latitude: 41.3851
+              longitude: 2.1734
+      responses:
+        '200':
+          description: Successful check
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PointCheckResponse'
+              examples:
+                insideZone:
+                  summary: Point is inside a zone
+                  value:
+                    inside: true
+                    zones:
+                      - id: "550e8400-e29b-41d4-a716-446655440000"
+                        name: "Beach Restricted Area"
+                        zoneType: "danger"
+                        message: "Swimming prohibited in this area"
+                    point:
+                      latitude: 41.3851
+                      longitude: 2.1734
+                outsideZones:
+                  summary: Point is not inside any zone
+                  value:
+                    inside: false
+                    zones: []
+                    point:
+                      latitude: 41.3851
+                      longitude: 2.1734
+        '400':
+          description: Invalid request (missing or invalid coordinates)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "latitude and longitude are required"
+        '500':
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    ZoneType:
+      type: string
+      enum:
+        - danger
+        - suggested
+        - boundary
+      description: |
+        Type of zone:
+        - `danger` - Areas to avoid (red)
+        - `suggested` - Recommended areas (green)
+        - `boundary` - Perimeter definition (gray outline)
+
+    ZoneProperties:
+      type: object
+      required:
+        - name
+        - zoneType
+      properties:
+        name:
+          type: string
+          description: Display name of the zone
+          example: "Beach Restricted Area"
+        zoneType:
+          $ref: '#/components/schemas/ZoneType'
+        message:
+          type: string
+          nullable: true
+          description: Message shown when user enters the zone
+          example: "Swimming prohibited in this area"
+        createdAt:
+          type: string
+          format: date-time
+          description: When the zone was created
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the zone was last modified
+
+    PolygonGeometry:
+      type: object
+      required:
+        - type
+        - coordinates
+      properties:
+        type:
+          type: string
+          enum: [Polygon]
+        coordinates:
+          type: array
+          description: Array of linear rings (first is exterior, rest are holes)
+          items:
+            type: array
+            items:
+              type: array
+              items:
+                type: number
+              minItems: 2
+              maxItems: 2
+          example:
+            - - [2.17, 41.38]
+              - [2.18, 41.38]
+              - [2.18, 41.39]
+              - [2.17, 41.39]
+              - [2.17, 41.38]
+
+    ZoneFeature:
+      type: object
+      required:
+        - type
+        - id
+        - properties
+        - geometry
+      properties:
+        type:
+          type: string
+          enum: [Feature]
+        id:
+          type: string
+          format: uuid
+          description: Unique zone identifier
+        properties:
+          $ref: '#/components/schemas/ZoneProperties'
+        geometry:
+          $ref: '#/components/schemas/PolygonGeometry'
+
+    ZonesGeoJSON:
+      type: object
+      required:
+        - type
+        - features
+      properties:
+        type:
+          type: string
+          enum: [FeatureCollection]
+        features:
+          type: array
+          items:
+            $ref: '#/components/schemas/ZoneFeature'
+
+    PointCheckRequest:
+      type: object
+      required:
+        - latitude
+        - longitude
+      properties:
+        latitude:
+          type: number
+          format: double
+          minimum: -90
+          maximum: 90
+          description: Latitude in decimal degrees (WGS84)
+          example: 41.3851
+        longitude:
+          type: number
+          format: double
+          minimum: -180
+          maximum: 180
+          description: Longitude in decimal degrees (WGS84)
+          example: 2.1734
+
+    MatchedZone:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        zoneType:
+          $ref: '#/components/schemas/ZoneType'
+        message:
+          type: string
+          nullable: true
+
+    PointCheckResponse:
+      type: object
+      required:
+        - inside
+        - zones
+      properties:
+        inside:
+          type: boolean
+          description: Whether the point is inside at least one zone
+        zones:
+          type: array
+          description: List of zones containing the point
+          items:
+            $ref: '#/components/schemas/MatchedZone'
+        point:
+          type: object
+          properties:
+            latitude:
+              type: number
+            longitude:
+              type: number
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Internal server error"
