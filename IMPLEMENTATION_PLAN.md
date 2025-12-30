@@ -195,6 +195,9 @@ Check if a coordinate is inside any zone.
 
 ---
 
+//TODO:
+Selections on view screen (Mapbox).
+
 ### Phase 5: Mobile Integration Preparation
 **Goal**: Document and prepare for mobile app integration
 

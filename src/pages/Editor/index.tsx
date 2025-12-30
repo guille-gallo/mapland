@@ -307,7 +307,7 @@ export default function Editor() {
       })
       map.addInteraction(modify)
     } else {
-      // Default mode - allow clicking zones to select them
+      // Default mode - allow clicking zones to select them and modify them
       const select = new Select({ 
         condition: click,
         layers: [vectorDrawLayer, vectorLayer],
@@ -320,6 +320,12 @@ export default function Editor() {
       })
       
       map.addInteraction(select)
+      
+      // Add modify for selected features
+      const modify = new Modify({ 
+        features: select.getFeatures()
+      })
+      map.addInteraction(modify)
     }
   }, [mode, vectorDrawSrc, vectorDrawLayer, vectorLayer, activeZoneType])
 
