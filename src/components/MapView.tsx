@@ -6,6 +6,8 @@ import { buildMaskWithTiming, featureCollectionHash } from '../utils/maskBuilder
 import { DEFAULT_ZONES } from '../data/default-zones'
 import { ZONE_CONFIGS, type ZoneType, type ZoneFeatureProperties } from '../types/zone'
 import { zonesApi } from '../services/zonesApi'
+import ZoneInfoSheet from './ZoneInfoSheet'
+import './ZoneInfoSheet.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
 const ZONES_STORAGE_KEY = 'mapland:zones'
@@ -22,7 +24,7 @@ interface LoadingState {
 export default function MapView() {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
-  const popupRef = useRef<mapboxgl.Popup | null>(null)
+  const [selectedZone, setSelectedZone] = useState<ZoneFeatureProperties | null>(null)
   const [loadingState, setLoadingState] = useState<LoadingState>({
     isLoading: true,
     error: null,
@@ -139,14 +141,6 @@ export default function MapView() {
     map.addControl(new mapboxgl.NavigationControl(), 'bottom-right')
 
     mapRef.current = map
-
-    // Create popup for zone info
-    const popup = new mapboxgl.Popup({
-      closeButton: true,
-      closeOnClick: true,
-      maxWidth: '300px',
-    })
-    popupRef.current = popup
 
     const removeLayerIfExists = (id: string) => {
       if (map.getLayer(id)) {
@@ -366,44 +360,30 @@ export default function MapView() {
       }
     }
 
-    // Click handler for zone info popup
+    // Click handler for zone info - updates state for ZoneInfoSheet
     const onZoneClick = (e: mapboxgl.MapMouseEvent) => {
       const features = map.queryRenderedFeatures(e.point, {
         layers: ['zones-fill-danger', 'zones-fill-suggested'],
       })
 
       if (features.length === 0) {
-        popup.remove()
+        setSelectedZone(null)
         return
       }
 
       const feature = features[0] as unknown as Feature<Polygon>
       const props = feature.properties as ZoneFeatureProperties
+      setSelectedZone(props)
+    }
 
-      const zoneType = props.zoneType || 'danger'
-      const config = ZONE_CONFIGS[zoneType]
-      const icon = zoneType === 'danger' ? '🔴' : '🟢'
-
-      const html = `
-        <div style="font-family: system-ui, sans-serif;">
-          <div style="font-weight: 600; font-size: 14px; margin-bottom: 4px;">
-            ${icon} ${props.name || 'Unnamed Zone'}
-          </div>
-          <div style="font-size: 12px; color: #666; margin-bottom: 8px;">
-            ${config.label}
-          </div>
-          ${props.message ? `
-            <div style="font-size: 13px; padding: 8px; background: ${zoneType === 'danger' ? '#fff0f0' : '#f0fff0'}; border-radius: 4px; border-left: 3px solid ${zoneType === 'danger' ? '#cc0000' : '#009900'};">
-              ${props.message}
-            </div>
-          ` : ''}
-        </div>
-      `
-
-      popup
-        .setLngLat(e.lngLat)
-        .setHTML(html)
-        .addTo(map)
+    // Click on empty area to deselect
+    const onMapClick = (e: mapboxgl.MapMouseEvent) => {
+      const features = map.queryRenderedFeatures(e.point, {
+        layers: ['zones-fill-danger', 'zones-fill-suggested'],
+      })
+      if (features.length === 0) {
+        setSelectedZone(null)
+      }
     }
 
     // Change cursor on zone hover
@@ -457,6 +437,7 @@ export default function MapView() {
       map.off('styledata', applyLabelFontWeight)
       map.off('click', 'zones-fill-danger', onZoneClick)
       map.off('click', 'zones-fill-suggested', onZoneClick)
+      map.off('click', onMapClick)
       map.off('mouseenter', 'zones-fill-danger', onZoneMouseEnter)
       map.off('mouseenter', 'zones-fill-suggested', onZoneMouseEnter)
       map.off('mouseleave', 'zones-fill-danger', onZoneMouseLeave)
@@ -464,7 +445,6 @@ export default function MapView() {
       window.removeEventListener('zones-updated', onZonesUpdated)
       window.removeEventListener('storage', onStorage)
       if (debounceHandle) window.clearTimeout(debounceHandle)
-      popup.remove()
       map.remove()
       mapRef.current = null
     }
@@ -485,6 +465,10 @@ export default function MapView() {
     if (loadingState.source === 'localStorage') return '💾'
     return '📍'
   }
+
+  const handleCloseZoneInfo = useCallback(() => {
+    setSelectedZone(null)
+  }, [])
 
   return (
     <>
@@ -508,6 +492,7 @@ export default function MapView() {
         <span>{getStatusIcon()}</span>
         <span>{status}</span>
       </div>
+      <ZoneInfoSheet zone={selectedZone} onClose={handleCloseZoneInfo} />
     </>
   )
 }

@@ -1,0 +1,265 @@
+.zone-info-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: white;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.15);
+  padding: 0 16px 16px;
+  transform: translateY(0);
+  transition: transform 0.3s ease, max-height 0.3s ease;
+  max-height: 180px;
+  overflow: hidden;
+  z-index: 1000;
+}
+
+.zone-info-sheet.expanded {
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+/* Drag handle */
+.sheet-handle {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+}
+
+.handle-bar {
+  width: 40px;
+  height: 4px;
+  background: #ddd;
+  border-radius: 2px;
+  transition: background 0.2s;
+}
+
+.sheet-handle:hover .handle-bar {
+  background: #bbb;
+}
+
+/* Close button */
+.sheet-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: #f0f0f0;
+  color: #666;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s, color 0.2s;
+}
+
+.sheet-close:hover {
+  background: #e0e0e0;
+  color: #333;
+}
+
+/* Header */
+.sheet-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.zone-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.zone-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.zone-title h3 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1a1a1a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Type badge */
+.zone-type-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.zone-type-badge[data-type="danger"] {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.zone-type-badge[data-type="suggested"] {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.zone-type-badge[data-type="boundary"] {
+  background: #f3f4f6;
+  color: #4b5563;
+}
+
+/* Message */
+.zone-message {
+  display: flex;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+}
+
+.zone-message[data-type="danger"] {
+  background: #fef2f2;
+  border-left: 3px solid #dc2626;
+}
+
+.zone-message[data-type="suggested"] {
+  background: #f0fdf4;
+  border-left: 3px solid #16a34a;
+}
+
+.zone-message[data-type="boundary"] {
+  background: #f9fafb;
+  border-left: 3px solid #9ca3af;
+}
+
+.zone-message .message-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.zone-message p {
+  margin: 0;
+  font-size: 14px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+/* Expanded details */
+.sheet-details {
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+  margin-top: 8px;
+}
+
+.detail-section h4 {
+  margin: 0 0 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.detail-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.detail-list dt {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.detail-list dd {
+  margin: 0;
+  font-size: 13px;
+  color: #1f2937;
+}
+
+.zone-id {
+  font-family: monospace;
+  font-size: 11px;
+  background: #f3f4f6;
+  padding: 2px 6px;
+  border-radius: 4px;
+  word-break: break-all;
+}
+
+.no-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  margin-top: 12px;
+}
+
+.no-message .message-icon {
+  opacity: 0.5;
+}
+
+.no-message p {
+  margin: 0;
+  font-size: 13px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+/* Expand hint */
+.expand-hint {
+  text-align: center;
+  padding: 8px 0 0;
+  font-size: 12px;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.expand-hint:hover {
+  color: #6b7280;
+}
+
+/* Desktop styles */
+@media (min-width: 768px) {
+  .zone-info-sheet {
+    left: auto;
+    right: 16px;
+    bottom: 16px;
+    width: 360px;
+    border-radius: 12px;
+    max-height: 200px;
+  }
+
+  .zone-info-sheet.expanded {
+    max-height: 60vh;
+  }
+}
+
+/* Animation for entering */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.zone-info-sheet {
+  animation: slideUp 0.3s ease;
+}
