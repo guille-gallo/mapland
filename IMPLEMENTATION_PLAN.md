@@ -207,6 +207,52 @@ Check if a coordinate is inside any zone.
 
 ---
 
+### Phase 6: React Native Mobile App + Real-time Tracking
+**Goal**: Build mobile app with geofencing and real-time location sharing to web MapView
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 6.1 | Define Supabase Realtime protocol & shared types | ✅ |
+| 6.2 | Add Realtime subscription to web MapView | ✅ |
+| 6.3 | Create location simulator for testing | ✅ |
+| 6.4 | Create React Native (Expo) project structure | ✅ |
+| 6.5 | Build geofencing service with Turf.js | ✅ |
+| 6.6 | Build mobile map screen with zones | ✅ |
+| 6.7 | Add location broadcasting to Supabase Realtime | ✅ |
+| 6.8 | Add SOS button and notifications | ✅ |
+
+**Architecture:**
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     MOBILE APP                                │
+│                   (React Native/Expo)                         │
+│                                                               │
+│  GPS Location → Geofencing Check (Turf.js) → Alert/Notify    │
+│       │                                                       │
+│       └───────→ Supabase Realtime Channel ─────────┐         │
+│                    (broadcast)                      │         │
+└─────────────────────────────────────────────────────│─────────┘
+                                                      │
+                                                      ▼
+┌──────────────────────────────────────────────────────────────┐
+│                     WEB MAPVIEW                               │
+│                    (Mapbox GL JS)                             │
+│                                                               │
+│  Supabase Realtime ← Subscribe to 'mapland:tracking' channel │
+│       │                                                       │
+│       └───────→ User Location Markers (pulsing circles)      │
+│                 with name labels & status colors              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**New Files Created:**
+- `src/types/realtime.ts` - Realtime protocol types
+- `src/hooks/useRealtimeTracking.ts` - Realtime subscription hook
+- `public/simulator.html` - Test page to simulate mobile users
+- `apps/mobile/` - Full React Native app with Expo
+
+---
+
 ## New File Structure
 
 ```
@@ -222,7 +268,7 @@ src/
   pages/
     Editor/
       components/
-        ZoneList.tsx     # Sidebar zone list
+        ZoneList.tsx     # Sidebar zone listgeometry
         ZoneForm.tsx     # Edit zone metadata
       index.tsx          # Updated editor
 supabase/
@@ -258,6 +304,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
 | 🟡 Medium | 3 (Editor) | 3-4 hours | None (additive) |
 | 🟢 Low | 4 (MapView) | 1-2 hours | None (additive) |
 | 🟢 Low | 5 (Mobile prep) | 1 hour | None |
+| 🟡 Medium | 6 (Mobile App) | 4-6 hours | None |
 
 ---
 
@@ -311,4 +358,6 @@ The mobile app will need to:
 | 2025-12-28 | - | Initial plan created | - |
 | 2025-12-28 | 1 | All Phase 1 tasks | Backend infrastructure ready |
 | 2025-12-28 | 2 | All Phase 2 tasks | API endpoints for mobile ready |
+| 2025-12-30 | 3-5 | All Phase 3, 4, 5 tasks | Editor, MapView, API docs complete |
+| 2025-12-30 | 6 | All Phase 6 tasks | Mobile app + real-time tracking |
 

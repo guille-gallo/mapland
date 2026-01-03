@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mapland - Location Simulator</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #1e293b;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #64748b;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #ef4444;
+    }
+    .status-dot.connected {
+      background: #22c55e;
+      box-shadow: 0 0 8px #22c55e;
+    }
+    .users {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .user {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px;
+      background: #f8fafc;
+      border-radius: 8px;
+    }
+    .user-name {
+      font-weight: 500;
+    }
+    .user-coords {
+      font-size: 12px;
+      color: #64748b;
+      font-family: monospace;
+    }
+    .user-status {
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .user-status.active {
+      background: #dcfce7;
+      color: #166534;
+    }
+    .user-status.sos {
+      background: #fee2e2;
+      color: #991b1b;
+    }
+    button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    button:hover {
+      transform: translateY(-1px);
+    }
+    .btn-primary {
+      background: #3b82f6;
+      color: white;
+    }
+    .btn-primary:hover {
+      background: #2563eb;
+    }
+    .btn-danger {
+      background: #ef4444;
+      color: white;
+    }
+    .btn-danger:hover {
+      background: #dc2626;
+    }
+    .btn-secondary {
+      background: #e2e8f0;
+      color: #475569;
+    }
+    .btn-secondary:hover {
+      background: #cbd5e1;
+    }
+    .btn-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .log {
+      background: #1e293b;
+      color: #94a3b8;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .log-entry {
+      margin-bottom: 4px;
+    }
+    .log-entry.broadcast {
+      color: #22c55e;
+    }
+    .log-entry.error {
+      color: #ef4444;
+    }
+    .log-entry.info {
+      color: #60a5fa;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎮 Location Simulator</h1>
+  <p class="subtitle">Test real-time tracking by simulating mobile users</p>
+
+  <div class="card">
+    <div class="status">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Disconnected</span>
+    </div>
+    
+    <div class="users" id="userList">
+      <!-- Users will be rendered here -->
+    </div>
+
+    <div class="btn-group">
+      <button class="btn-primary" id="startBtn" onclick="startSimulation()">Start Simulation</button>
+      <button class="btn-danger" id="stopBtn" onclick="stopSimulation()" disabled>Stop</button>
+      <button class="btn-secondary" onclick="triggerSOS()">🆘 Trigger SOS</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top: 0; margin-bottom: 12px;">Console Log</h3>
+    <div class="log" id="log"></div>
+  </div>
+
+  <p style="color: #64748b; font-size: 14px;">
+    Open <a href="/" target="_blank">MapView</a> in another tab to see the users appear on the map.
+  </p>
+
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm'
+
+    // Get env vars from meta tags or hardcode for testing
+    const SUPABASE_URL = document.querySelector('meta[name="supabase-url"]')?.content 
+      || prompt('Enter your Supabase URL:', 'https://your-project.supabase.co')
+    const SUPABASE_KEY = document.querySelector('meta[name="supabase-key"]')?.content
+      || prompt('Enter your Supabase Anon Key:')
+
+    if (!SUPABASE_URL || !SUPABASE_KEY) {
+      log('Missing Supabase credentials', 'error')
+      throw new Error('Missing credentials')
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_KEY)
+    const CHANNEL = 'mapland:tracking'
+
+    let channel = null
+    let intervalId = null
+    let users = [
+      {
+        userId: 'sim-alice',
+        displayName: 'Alice 📱',
+        deviceType: 'simulator',
+        lat: 41.3807,
+        lng: 2.1896,
+        heading: Math.random() * 360,
+        status: 'active',
+      },
+      {
+        userId: 'sim-bob',
+        displayName: 'Bob 🚶',
+        deviceType: 'simulator',
+        lat: 41.4036,
+        lng: 2.1744,
+        heading: Math.random() * 360,
+        status: 'active',
+      },
+    ]
+
+    // Expose to window for onclick handlers
+    window.startSimulation = startSimulation
+    window.stopSimulation = stopSimulation
+    window.triggerSOS = triggerSOS
+
+    function log(message, type = 'info') {
+      const logEl = document.getElementById('log')
+      const entry = document.createElement('div')
+      entry.className = `log-entry ${type}`
+      entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`
+      logEl.appendChild(entry)
+      logEl.scrollTop = logEl.scrollHeight
+    }
+
+    function updateUI() {
+      // Update users list
+      const userList = document.getElementById('userList')
+      userList.innerHTML = users.map(u => `
+        <div class="user">
+          <div>
+            <div class="user-name">${u.displayName}</div>
+            <div class="user-coords">${u.lat.toFixed(5)}, ${u.lng.toFixed(5)}</div>
+          </div>
+          <div class="user-status ${u.status}">${u.status.toUpperCase()}</div>
+        </div>
+      `).join('')
+    }
+
+    async function startSimulation() {
+      try {
+        channel = supabase.channel(CHANNEL)
+        
+        await channel.subscribe((status) => {
+          log(`Channel: ${status}`, status === 'SUBSCRIBED' ? 'info' : 'error')
+          
+          const dot = document.getElementById('statusDot')
+          const text = document.getElementById('statusText')
+          
+          if (status === 'SUBSCRIBED') {
+            dot.classList.add('connected')
+            text.textContent = 'Connected & Broadcasting'
+            document.getElementById('startBtn').disabled = true
+            document.getElementById('stopBtn').disabled = false
+          } else {
+            dot.classList.remove('connected')
+            text.textContent = status
+          }
+        })
+
+        // Start broadcasting
+        broadcast()
+        intervalId = setInterval(() => {
+          moveUsers()
+          broadcast()
+        }, 3000)
+
+        log('Simulation started', 'info')
+      } catch (err) {
+        log(`Error: ${err.message}`, 'error')
+      }
+    }
+
+    function stopSimulation() {
+      if (intervalId) {
+        clearInterval(intervalId)
+        intervalId = null
+      }
+
+      // Send leave events
+      users.forEach(u => {
+        channel?.send({
+          type: 'broadcast',
+          event: 'leave',
+          payload: { userId: u.userId, timestamp: new Date().toISOString() }
+        })
+      })
+
+      if (channel) {
+        supabase.removeChannel(channel)
+        channel = null
+      }
+
+      document.getElementById('statusDot').classList.remove('connected')
+      document.getElementById('statusText').textContent = 'Disconnected'
+      document.getElementById('startBtn').disabled = false
+      document.getElementById('stopBtn').disabled = true
+
+      log('Simulation stopped', 'info')
+    }
+
+    function moveUsers() {
+      users.forEach(u => {
+        // Random walk
+        u.lat += (Math.random() - 0.5) * 0.0008
+        u.lng += (Math.random() - 0.5) * 0.0008
+        u.heading = (u.heading + (Math.random() - 0.5) * 30 + 360) % 360
+      })
+      updateUI()
+    }
+
+    function broadcast() {
+      users.forEach(u => {
+        const payload = {
+          user: {
+            userId: u.userId,
+            displayName: u.displayName,
+            deviceType: u.deviceType,
+          },
+          position: {
+            latitude: u.lat,
+            longitude: u.lng,
+            accuracy: 10 + Math.random() * 20,
+            heading: u.heading,
+            speed: 1 + Math.random() * 2,
+          },
+          status: u.status,
+          timestamp: new Date().toISOString(),
+        }
+
+        channel?.send({
+          type: 'broadcast',
+          event: 'location',
+          payload,
+        })
+      })
+
+      log(`Broadcast ${users.length} locations`, 'broadcast')
+    }
+
+    function triggerSOS() {
+      const user = users[0] // Alice
+      user.status = user.status === 'sos' ? 'active' : 'sos'
+      
+      channel?.send({
+        type: 'broadcast',
+        event: 'status',
+        payload: {
+          user: { userId: user.userId },
+          status: user.status,
+          timestamp: new Date().toISOString(),
+        },
+      })
+
+      log(`${user.displayName} status: ${user.status.toUpperCase()}`, user.status === 'sos' ? 'error' : 'info')
+      updateUI()
+    }
+
+    // Initial UI
+    updateUI()
+    log('Ready. Click "Start Simulation" to begin.', 'info')
+  </script>
+</body>
+</html>

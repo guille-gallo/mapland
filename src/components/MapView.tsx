@@ -6,6 +6,8 @@ import { buildMaskWithTiming, featureCollectionHash } from '../utils/maskBuilder
 import { DEFAULT_ZONES } from '../data/default-zones'
 import { ZONE_CONFIGS, type ZoneType, type ZoneFeatureProperties } from '../types/zone'
 import { zonesApi } from '../services/zonesApi'
+import { useRealtimeTracking } from '../hooks/useRealtimeTracking'
+import type { TrackedUser } from '../types/realtime'
 import ZoneInfoSheet from './ZoneInfoSheet'
 import './ZoneInfoSheet.css'
 
@@ -25,12 +27,30 @@ export default function MapView() {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<mapboxgl.Map | null>(null)
   const [selectedZone, setSelectedZone] = useState<ZoneFeatureProperties | null>(null)
+  const [selectedUser, setSelectedUser] = useState<TrackedUser | null>(null)
   const [loadingState, setLoadingState] = useState<LoadingState>({
     isLoading: true,
     error: null,
     source: null,
   })
   const [status, setStatus] = useState('Loading map…')
+
+  // Real-time user tracking
+  const { userFeatures, isConnected, activeUserCount } = useRealtimeTracking({
+    enabled: true,
+    onUserUpdate: (user) => {
+      // Update selected user if it's the same one
+      if (selectedUser?.user.userId === user.user.userId) {
+        setSelectedUser(user)
+      }
+    },
+    onUserOffline: (userId) => {
+      // Clear selection if the user went offline
+      if (selectedUser?.user.userId === userId) {
+        setSelectedUser(null)
+      }
+    },
+  })
 
   // Store zones data in ref to access in map callbacks
   const zonesDataRef = useRef<FeatureCollection | null>(null)
@@ -244,6 +264,90 @@ export default function MapView() {
       }
     }
 
+    // User locations layer for real-time tracking
+    const USER_LOCATIONS_SOURCE = 'user-locations'
+    const USER_LOCATIONS_LAYER = 'user-locations-markers'
+    const USER_LOCATIONS_PULSE_LAYER = 'user-locations-pulse'
+    const USER_LOCATIONS_LABELS_LAYER = 'user-locations-labels'
+
+    const setupUserLocationsLayer = () => {
+      // Add empty source for user locations
+      if (!map.getSource(USER_LOCATIONS_SOURCE)) {
+        map.addSource(USER_LOCATIONS_SOURCE, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] },
+        })
+      }
+
+      // Outer pulse/accuracy circle
+      if (!map.getLayer(USER_LOCATIONS_PULSE_LAYER)) {
+        map.addLayer({
+          id: USER_LOCATIONS_PULSE_LAYER,
+          type: 'circle',
+          source: USER_LOCATIONS_SOURCE,
+          paint: {
+            'circle-radius': [
+              'interpolate', ['linear'], ['coalesce', ['get', 'accuracy'], 20],
+              5, 15,   // 5m accuracy -> 15px radius
+              50, 30,  // 50m accuracy -> 30px radius
+              100, 45, // 100m accuracy -> 45px radius
+            ],
+            'circle-color': [
+              'case',
+              ['==', ['get', 'status'], 'sos'], '#ff0000',
+              ['==', ['get', 'status'], 'inactive'], '#888888',
+              ['get', 'isStale'], '#ffaa00',
+              '#3b82f6' // active - blue
+            ],
+            'circle-opacity': 0.2,
+            'circle-stroke-width': 0,
+          },
+        })
+      }
+
+      // Inner marker circle
+      if (!map.getLayer(USER_LOCATIONS_LAYER)) {
+        map.addLayer({
+          id: USER_LOCATIONS_LAYER,
+          type: 'circle',
+          source: USER_LOCATIONS_SOURCE,
+          paint: {
+            'circle-radius': 8,
+            'circle-color': [
+              'case',
+              ['==', ['get', 'status'], 'sos'], '#ff0000',
+              ['==', ['get', 'status'], 'inactive'], '#888888',
+              ['get', 'isStale'], '#ffaa00',
+              '#3b82f6' // active - blue
+            ],
+            'circle-stroke-width': 3,
+            'circle-stroke-color': '#ffffff',
+          },
+        })
+      }
+
+      // User name labels
+      if (!map.getLayer(USER_LOCATIONS_LABELS_LAYER)) {
+        map.addLayer({
+          id: USER_LOCATIONS_LABELS_LAYER,
+          type: 'symbol',
+          source: USER_LOCATIONS_SOURCE,
+          layout: {
+            'text-field': ['get', 'displayName'],
+            'text-size': 12,
+            'text-offset': [0, 1.5],
+            'text-anchor': 'top',
+            'text-font': ['DIN Pro Medium', 'Arial Unicode MS Regular'],
+          },
+          paint: {
+            'text-color': '#1e293b',
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 1.5,
+          },
+        })
+      }
+    }
+
     let lastZonesHash: string | null = null
     let debounceHandle: number | null = null
 
@@ -395,6 +499,15 @@ export default function MapView() {
       mapContainer.style.cursor = 'grab'
     }
 
+    // Change cursor on user marker hover
+    const onUserMarkerMouseEnter = () => {
+      mapContainer.style.cursor = 'pointer'
+    }
+
+    const onUserMarkerMouseLeave = () => {
+      mapContainer.style.cursor = 'grab'
+    }
+
     map.on('load', async () => {
       setStatus('Loading zones…')
       applyLabelFontWeight()
@@ -415,6 +528,9 @@ export default function MapView() {
         upsertExclusionSource(DEFAULT_ZONES, true)
       }
 
+      // Setup user locations layer for real-time tracking
+      setupUserLocationsLayer()
+
       // Add click handlers for zone layers (after zones are loaded)
       map.on('click', 'zones-fill-danger', onZoneClick)
       map.on('click', 'zones-fill-suggested', onZoneClick)
@@ -422,6 +538,10 @@ export default function MapView() {
       map.on('mouseenter', 'zones-fill-suggested', onZoneMouseEnter)
       map.on('mouseleave', 'zones-fill-danger', onZoneMouseLeave)
       map.on('mouseleave', 'zones-fill-suggested', onZoneMouseLeave)
+
+      // Add click/hover handlers for user markers
+      map.on('mouseenter', USER_LOCATIONS_LAYER, onUserMarkerMouseEnter)
+      map.on('mouseleave', USER_LOCATIONS_LAYER, onUserMarkerMouseLeave)
     })
 
     map.on('styledata', applyLabelFontWeight)
@@ -442,6 +562,8 @@ export default function MapView() {
       map.off('mouseenter', 'zones-fill-suggested', onZoneMouseEnter)
       map.off('mouseleave', 'zones-fill-danger', onZoneMouseLeave)
       map.off('mouseleave', 'zones-fill-suggested', onZoneMouseLeave)
+      map.off('mouseenter', USER_LOCATIONS_LAYER, onUserMarkerMouseEnter)
+      map.off('mouseleave', USER_LOCATIONS_LAYER, onUserMarkerMouseLeave)
       window.removeEventListener('zones-updated', onZonesUpdated)
       window.removeEventListener('storage', onStorage)
       if (debounceHandle) window.clearTimeout(debounceHandle)
@@ -449,6 +571,20 @@ export default function MapView() {
       mapRef.current = null
     }
   }, [fetchZones, getCombinedLocalFeatures])
+
+  // Update user locations on map when userFeatures changes
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !map.isStyleLoaded()) return
+
+    const source = map.getSource('user-locations') as mapboxgl.GeoJSONSource | undefined
+    if (source) {
+      source.setData({
+        type: 'FeatureCollection',
+        features: userFeatures as unknown as Feature[],
+      })
+    }
+  }, [userFeatures])
 
   if (!MAPBOX_TOKEN) {
     return (
@@ -473,6 +609,7 @@ export default function MapView() {
   return (
     <>
       <div ref={containerRef} style={{ position: 'fixed', inset: 0 }} />
+      {/* Status badge - zones */}
       <div
         style={{
           position: 'fixed',
@@ -491,6 +628,42 @@ export default function MapView() {
       >
         <span>{getStatusIcon()}</span>
         <span>{status}</span>
+      </div>
+      {/* Tracking status badge */}
+      <div
+        style={{
+          position: 'fixed',
+          bottom: 40,
+          left: 10,
+          padding: '6px 10px',
+          background: isConnected ? 'rgba(59, 130, 246, 0.9)' : 'rgba(100,100,100,0.8)',
+          color: '#fff',
+          fontSize: 12,
+          borderRadius: 6,
+          fontWeight: 400,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          zIndex: 1000,
+          pointerEvents: 'none',
+        }}
+      >
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: isConnected ? '#4ade80' : '#ef4444',
+            boxShadow: isConnected ? '0 0 6px #4ade80' : 'none',
+          }}
+        />
+        <span>
+          {isConnected
+            ? activeUserCount > 0
+              ? `${activeUserCount} user${activeUserCount > 1 ? 's' : ''} online`
+              : 'Tracking active'
+            : 'Tracking offline'}
+        </span>
       </div>
       <ZoneInfoSheet zone={selectedZone} onClose={handleCloseZoneInfo} />
     </>
