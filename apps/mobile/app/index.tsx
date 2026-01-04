@@ -2,10 +2,13 @@ import { useEffect, useRef, useCallback, useState } from 'react'
 import { View, Text, StyleSheet, Alert, TouchableOpacity, Platform } from 'react-native'
 import MapView, { Polygon, PROVIDER_GOOGLE } from 'react-native-maps'
 import { useRouter } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Constants from 'expo-constants'
 
 import { useLocation } from '../hooks/useLocation'
 import { useGeofencing } from '../hooks/useGeofencing'
+import { useMessaging } from '../hooks/useMessaging'
+import { useAppContext } from '../context/AppContext'
 import { locationBroadcast, LOCATION_BROADCAST_INTERVAL } from '../services/locationBroadcast'
 import { zonesApi, type ZoneFeature } from '../services/zonesApi'
 import type { MatchedZone, GeofenceTransition } from '../services/geofencing'
@@ -17,8 +20,8 @@ const isExpoGo = Constants.appOwnership === 'expo'
 let Notifications: typeof import('expo-notifications') | null = null
 if (!isExpoGo) {
   try {
-    Notifications = require('expo-notifications')
-    Notifications.setNotificationHandler({
+    const NotificationsModule = require('expo-notifications')
+    NotificationsModule.setNotificationHandler({
       handleNotification: async () => ({
         shouldShowAlert: true,
         shouldPlaySound: true,
@@ -27,6 +30,7 @@ if (!isExpoGo) {
         shouldShowList: true,
       }),
     })
+    Notifications = NotificationsModule
   } catch (e) {
     console.warn('expo-notifications not available')
   }
@@ -43,9 +47,13 @@ export default function HomeScreen() {
   const router = useRouter()
   const mapRef = useRef<MapView>(null)
   const broadcastIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const insets = useSafeAreaInsets()
 
   const [zones, setZones] = useState<ZoneFeature[]>([])
   const [showAlert, setShowAlert] = useState<MatchedZone | null>(null)
+
+  // Get user info from context
+  const { userInfo } = useAppContext()
 
   // Location tracking
   const { location, isTracking, error: locationError, permissionStatus } = useLocation({
@@ -65,6 +73,12 @@ export default function HomeScreen() {
     location,
     onEnterZone: handleEnterZone,
     onExitZone: handleExitZone,
+  })
+
+  // Messaging from backoffice (handles alerts/commands automatically)
+  const { unreadCount } = useMessaging({
+    userId: userInfo?.userId ?? null,
+    enabled: true,
   })
 
   // Load zones for map display
@@ -264,7 +278,7 @@ export default function HomeScreen() {
 
       {/* Geofence status */}
       {geofenceResult && geofenceResult.inside && (
-        <View style={styles.zoneIndicator}>
+        <View style={[styles.zoneIndicator, { bottom: 85 + insets.bottom }]}>
           <Text style={styles.zoneIndicatorText}>
             📍 Inside: {geofenceResult.zones.map(z => z.name).join(', ')}
           </Text>
@@ -272,22 +286,41 @@ export default function HomeScreen() {
       )}
 
       {/* Center button */}
-      <TouchableOpacity style={styles.centerButton} onPress={centerOnUser}>
+      <TouchableOpacity 
+        style={[styles.centerButton, { bottom: 15 + insets.bottom }]} 
+        onPress={centerOnUser}
+      >
         <Text style={styles.centerButtonText}>📍</Text>
       </TouchableOpacity>
 
       {/* Settings button */}
       <TouchableOpacity 
-        style={styles.settingsButton} 
+        style={[styles.settingsButton, { bottom: 15 + insets.bottom }]} 
         onPress={() => router.push('/settings')}
       >
         <Text style={styles.settingsButtonText}>⚙️</Text>
+      </TouchableOpacity>
+
+      {/* Chat button */}
+      <TouchableOpacity 
+        style={[styles.chatButton, { bottom: 15 + insets.bottom }]} 
+        onPress={() => router.push('/chat')}
+      >
+        <Text style={styles.chatButtonText}>💬</Text>
+        {unreadCount > 0 && (
+          <View style={styles.unreadBadge}>
+            <Text style={styles.unreadBadgeText}>
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </Text>
+          </View>
+        )}
       </TouchableOpacity>
 
       {/* SOS Button */}
       <TouchableOpacity 
         style={[
           styles.sosButton,
+          { bottom: 15 + insets.bottom, left: 20 + insets.left },
           locationBroadcast.getStatus() === 'sos' && styles.sosButtonActive
         ]}
         onLongPress={() => {
@@ -436,6 +469,42 @@ const styles = StyleSheet.create({
   },
   settingsButtonText: {
     fontSize: 24,
+  },
+  chatButton: {
+    position: 'absolute',
+    bottom: 30,
+    right: 140,
+    width: 50,
+    height: 50,
+    backgroundColor: '#fff',
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  chatButtonText: {
+    fontSize: 24,
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    backgroundColor: '#ef4444',
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  unreadBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
   },
   sosButton: {
     position: 'absolute',
