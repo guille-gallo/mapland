@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from 'react'
 import { View, Text, StyleSheet, Alert, TouchableOpacity, Platform } from 'react-native'
-import MapView, { Polygon, PROVIDER_GOOGLE } from 'react-native-maps'
+import MapView, { Polygon, MapPolygon, PROVIDER_GOOGLE } from 'react-native-maps'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Constants from 'expo-constants'
@@ -40,7 +40,8 @@ if (!isExpoGo) {
 const ZONE_COLORS: Record<string, { fill: string; stroke: string }> = {
   danger: { fill: 'rgba(255, 0, 0, 0.3)', stroke: '#cc0000' },
   suggested: { fill: 'rgba(0, 200, 0, 0.3)', stroke: '#009900' },
-  boundary: { fill: 'transparent', stroke: '#666666' },
+  // Boundary shows a subtle blue fill to indicate "allowed area"
+  boundary: { fill: 'rgba(100, 149, 237, 0.05)', stroke: '#4169E1' },
 }
 
 export default function HomeScreen() {
@@ -195,20 +196,26 @@ export default function HomeScreen() {
 
   // Render zone polygons
   const renderZones = () => {
-    return zones.map((zone) => {
+    const elements: JSX.Element[] = []
+    
+    zones.forEach((zone) => {
       const colors = ZONE_COLORS[zone.properties.zoneType] || ZONE_COLORS.suggested
       const coordinates = zone.geometry.coordinates[0].map(([lng, lat]) => ({
         latitude: lat,
         longitude: lng,
       }))
 
-      return (
+      // For boundary zones, render FIRST (underneath other zones)
+      // with a subtle fill to indicate "allowed operational area"
+      // Note: We can't mask the outside in react-native-maps on Android,
+      // so we color the inside instead as a visual indicator
+      elements.push(
         <Polygon
           key={zone.id}
           coordinates={coordinates}
           fillColor={colors.fill}
           strokeColor={colors.stroke}
-          strokeWidth={2}
+          strokeWidth={zone.properties.zoneType === 'boundary' ? 3 : 2}
           tappable
           onPress={() => {
             Alert.alert(
@@ -219,6 +226,15 @@ export default function HomeScreen() {
           }}
         />
       )
+    })
+    
+    // Sort so boundary renders first (underneath), then other zones on top
+    return elements.sort((a, b) => {
+      const aIsBoundary = zones.find(z => z.id === a.key)?.properties.zoneType === 'boundary'
+      const bIsBoundary = zones.find(z => z.id === b.key)?.properties.zoneType === 'boundary'
+      if (aIsBoundary && !bIsBoundary) return -1
+      if (!aIsBoundary && bIsBoundary) return 1
+      return 0
     })
   }
 
