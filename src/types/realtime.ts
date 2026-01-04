@@ -212,3 +212,69 @@ export function trackedUserToFeature(user: TrackedUser): UserLocationFeature {
     },
   }
 }
+
+// ============================================================================
+// Messaging Protocol (Phase 7)
+// ============================================================================
+
+/**
+ * Channel for direct messages to a specific user
+ * Format: mapland:messages:{userId}
+ */
+export const getMessageChannel = (userId: string) => `mapland:messages:${userId}`
+
+/**
+ * Channel for backoffice to receive messages from all mobile users
+ */
+export const BACKOFFICE_CHANNEL = 'mapland:backoffice'
+
+/**
+ * Message types
+ */
+export type MessageType = 'text' | 'command'
+
+/**
+ * Sender type
+ */
+export type SenderType = 'backoffice' | 'mobile'
+
+/**
+ * Command types that can be sent to mobile users
+ */
+export type CommandType = 'call_operator'
+
+/**
+ * Chat message (bidirectional)
+ */
+export interface ChatMessage {
+  /** Unique message ID */
+  id: string
+  /** Message type */
+  type: MessageType
+  /** Text content (for 'text' type) */
+  content?: string
+  /** Command details (for 'command' type) */
+  command?: {
+    type: CommandType
+    /** Data for the command (e.g., phone number) */
+    data?: Record<string, string>
+  }
+  /** Sender info */
+  sender: {
+    id: string
+    name: string
+    type: SenderType
+  }
+  /** Recipient user ID (for BO->mobile) or 'backoffice' (for mobile->BO) */
+  recipientId: string
+  /** ISO timestamp */
+  timestamp: string
+}
+
+/** @deprecated Use ChatMessage instead */
+export type DirectMessage = ChatMessage
+
+/**
+ * Operator phone number for "Call operator" command
+ */
+export const OPERATOR_PHONE_NUMBER = '+1234567890'

@@ -9,6 +9,7 @@ import { zonesApi } from '../services/zonesApi'
 import { useRealtimeTracking } from '../hooks/useRealtimeTracking'
 import type { TrackedUser } from '../types/realtime'
 import ZoneInfoSheet from './ZoneInfoSheet'
+import UserPanel from './UserPanel'
 import './ZoneInfoSheet.css'
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined
@@ -36,7 +37,7 @@ export default function MapView() {
   const [status, setStatus] = useState('Loading map…')
 
   // Real-time user tracking
-  const { userFeatures, isConnected, activeUserCount } = useRealtimeTracking({
+  const { users, userFeatures, isConnected, activeUserCount } = useRealtimeTracking({
     enabled: true,
     onUserUpdate: (user) => {
       // Update selected user if it's the same one
@@ -51,6 +52,12 @@ export default function MapView() {
       }
     },
   })
+
+  // Store users map in ref for click handler
+  const usersRef = useRef<Map<string, TrackedUser>>(users)
+  useEffect(() => {
+    usersRef.current = users
+  }, [users])
 
   // Store zones data in ref to access in map callbacks
   const zonesDataRef = useRef<FeatureCollection | null>(null)
@@ -508,6 +515,27 @@ export default function MapView() {
       mapContainer.style.cursor = 'grab'
     }
 
+    // Click handler for user markers
+    const onUserMarkerClick = (e: mapboxgl.MapMouseEvent) => {
+      const features = map.queryRenderedFeatures(e.point, {
+        layers: [USER_LOCATIONS_LAYER],
+      })
+
+      if (features.length === 0) {
+        return
+      }
+
+      const feature = features[0]
+      const userId = feature.properties?.userId as string
+      if (userId) {
+        const user = usersRef.current.get(userId)
+        if (user) {
+          setSelectedUser(user)
+          setSelectedZone(null) // Close zone panel if open
+        }
+      }
+    }
+
     map.on('load', async () => {
       setStatus('Loading zones…')
       applyLabelFontWeight()
@@ -540,6 +568,7 @@ export default function MapView() {
       map.on('mouseleave', 'zones-fill-suggested', onZoneMouseLeave)
 
       // Add click/hover handlers for user markers
+      map.on('click', USER_LOCATIONS_LAYER, onUserMarkerClick)
       map.on('mouseenter', USER_LOCATIONS_LAYER, onUserMarkerMouseEnter)
       map.on('mouseleave', USER_LOCATIONS_LAYER, onUserMarkerMouseLeave)
     })
@@ -564,6 +593,7 @@ export default function MapView() {
       map.off('mouseleave', 'zones-fill-suggested', onZoneMouseLeave)
       map.off('mouseenter', USER_LOCATIONS_LAYER, onUserMarkerMouseEnter)
       map.off('mouseleave', USER_LOCATIONS_LAYER, onUserMarkerMouseLeave)
+      map.off('click', USER_LOCATIONS_LAYER, onUserMarkerClick)
       window.removeEventListener('zones-updated', onZonesUpdated)
       window.removeEventListener('storage', onStorage)
       if (debounceHandle) window.clearTimeout(debounceHandle)
@@ -666,6 +696,7 @@ export default function MapView() {
         </span>
       </div>
       <ZoneInfoSheet zone={selectedZone} onClose={handleCloseZoneInfo} />
+      <UserPanel user={selectedUser} onClose={() => setSelectedUser(null)} />
     </>
   )
 }
