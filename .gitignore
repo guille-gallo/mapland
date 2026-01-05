@@ -31,3 +31,5 @@ dist-ssr
 .env.test.local
 .env.production.local
 .vercel
+
+docs/TODO.md
