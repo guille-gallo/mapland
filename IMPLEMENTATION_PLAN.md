@@ -305,6 +305,7 @@ VITE_SUPABASE_ANON_KEY=your_anon_key
 | 🟢 Low | 4 (MapView) | 1-2 hours | None (additive) |
 | 🟢 Low | 5 (Mobile prep) | 1 hour | None |
 | 🟡 Medium | 6 (Mobile App) | 4-6 hours | None |
+| 🟡 Medium | 7 (Communication) | 3-4 hours | None |
 
 ---
 
@@ -360,4 +361,67 @@ The mobile app will need to:
 | 2025-12-28 | 2 | All Phase 2 tasks | API endpoints for mobile ready |
 | 2025-12-30 | 3-5 | All Phase 3, 4, 5 tasks | Editor, MapView, API docs complete |
 | 2025-12-30 | 6 | All Phase 6 tasks | Mobile app + real-time tracking |
+| 2026-01-04 | 7 | All Phase 7 tasks | Bidirectional chat between BO and mobile |
+
+---
+
+## Phase 7: Communication Features
+**Goal**: Enable bidirectional messaging between backoffice and mobile users
+
+| Task | Description | Status |
+|------|-------------|--------|
+| 7.1 | Define messaging protocol types in `src/types/realtime.ts` | ✅ |
+| 7.2 | Create UserPanel component with user info and chat tabs | ✅ |
+| 7.3 | Add mobile messaging service with send/receive | ✅ |
+| 7.4 | Create mobile chat screen with message bubbles | ✅ |
+| 7.5 | Session-based message persistence in AppContext | ✅ |
+| 7.6 | Add notification for new messages (once per session) | ✅ |
+| 7.7 | Implement Call Request command feature | ✅ |
+| 7.8 | Add unread message badge on mobile chat button | ✅ |
+
+**Architecture:**
+```
+┌──────────────────────────────────────────────────────────────┐
+│                     WEB BACKOFFICE                            │
+│                                                               │
+│  Click User Marker → UserPanel opens                         │
+│       │                                                       │
+│       ├── Info Tab: Location, zones, device info             │
+│       └── Chat Tab: Send/receive messages                    │
+│              │                                                │
+│              └───→ Supabase Realtime: mapland:messages:{id}  │
+│                    (broadcast to specific user)              │
+│                                                               │
+│  ← Receive replies via: mapland:backoffice channel           │
+└──────────────────────────────────────────────────────────────┘
+                              ↕
+┌──────────────────────────────────────────────────────────────┐
+│                     MOBILE APP                                │
+│                                                               │
+│  Subscribe to: mapland:messages:{userId}                     │
+│       │                                                       │
+│       ├── Text messages → Notification (once) + Chat screen  │
+│       └── Commands (Call Request) → Alert dialog             │
+│                                                               │
+│  Send replies via: mapland:backoffice channel                │
+│  Chat screen: Full conversation history (session-based)      │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**New/Modified Files:**
+- `src/types/realtime.ts` - Added ChatMessage, BACKOFFICE_CHANNEL, SenderType
+- `src/components/UserPanel.tsx` - User info panel with chat tabs
+- `apps/mobile/services/messaging.ts` - Bidirectional messaging service
+- `apps/mobile/hooks/useMessaging.ts` - Messaging hook with send/receive
+- `apps/mobile/context/AppContext.tsx` - Session message storage, deduplication
+- `apps/mobile/app/chat.tsx` - Full chat screen with message bubbles
+- `apps/mobile/app/index.tsx` - Chat button with unread badge
+
+**Additional Fixes (Phase 7):**
+- Expo SDK 52 → 54 upgrade for Expo Go compatibility
+- expo-notifications conditional loading (fallback to Alert in Expo Go)
+- Zone cache TTL reduced from 1 hour to 5 minutes
+- Tracking badge flicker fix (2-second debounce on disconnect)
+- Safe area insets for mobile bottom buttons
+- Message deduplication to prevent duplicate notifications
 
