@@ -34,7 +34,6 @@ const ZONES_STORAGE_KEY = 'mapland:zones'
 const NEW_POLYGONS_STORAGE_KEY = 'mapland:new-polygons'
 
 export default function Editor() {
-  
   const containerRef = useRef<HTMLDivElement | null>(null)
   const mapRef = useRef<Map | null>(null)
   
