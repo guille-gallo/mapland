@@ -1,7 +1,8 @@
 import { getSupabaseClient } from '../lib/auth-kit'
 
-// Shared singleton from auth-kit — reads VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY from env.
-// AuthGate ensures the user is authenticated before any code that uses this runs.
+// Re-export the Supabase client getter as a lazy accessor.
+// Avoids creating the client at module import time, which prevents
+// hash fragment OAuth tokens from being detected.
 export const supabase = getSupabaseClient()
 
 export const isSupabaseConfigured = (): boolean => true

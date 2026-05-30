@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
-import { getSupabaseClient } from './supabase'
+import { getSupabaseClient, resetSupabaseClient } from './supabase'
 
 // ── Helpers ──────────────────────────────────────────
 
@@ -72,18 +72,16 @@ export interface UseAuthReturn {
 // ── Hook ──────────────────────────────────────────────
 
 export function useAuth(options?: UseAuthOptions): UseAuthReturn {
-  const supabase = useMemo(() => getSupabaseClient(), [])
-
   const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
 
-  const allowList = useMemo(() => {
+  const allowList = (() => {
     if (options?.allowedEmails !== undefined) {
       return options.allowedEmails.map(normalizeEmail)
     }
     return parseAllowedEmails()
-  }, [options?.allowedEmails])
+  })()
 
   useEffect(() => {
     let mounted = true
@@ -91,18 +89,32 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
     const urlError = extractUrlAuthError()
     if (urlError) setAuthError(urlError)
 
+    // If URL hash contains OAuth tokens, the singleton client may have been
+    // created before the hash was available. Force a fresh session check.
+    const hashHasTokens = window.location.hash.includes('access_token=')
+
     const load = async () => {
-      const { data, error } = await supabase.auth.getSession()
+      // When hash tokens are present but getSession returns null,
+      // reset the singleton so the next call parses the hash properly.
+      if (hashHasTokens) {
+        resetSupabaseClient()
+      }
+      const client = getSupabaseClient()
+      const { data, error } = await client.auth.getSession()
       if (!mounted) return
       if (error) setAuthError(error.message)
       else if (data.session?.user) {
         const email = normalizeEmail(data.session.user.email ?? '')
         if (allowList && !allowList.includes(email)) {
-          await supabase.auth.signOut()
+          await client.auth.signOut()
           setAuthError(`Access denied. ${email} is not authorized.`)
           setSession(null)
         } else {
           setSession(data.session)
+        }
+        // Clean up the hash fragment from the URL
+        if (window.location.hash.includes('access_token=')) {
+          window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
         }
       } else {
         setSession(null)
@@ -111,12 +123,13 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
     }
     load()
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, next) => {
+    const client = getSupabaseClient()
+    const { data: sub } = client.auth.onAuthStateChange(async (_event, next) => {
       if (!mounted) return
       if (next?.user) {
         const email = normalizeEmail(next.user.email ?? '')
         if (allowList && !allowList.includes(email)) {
-          await supabase.auth.signOut()
+          await client.auth.signOut()
           setAuthError(`Access denied. ${email} is not authorized.`)
           setSession(null)
           setIsLoading(false)
@@ -132,19 +145,21 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
       mounted = false
       sub.subscription.unsubscribe()
     }
-  }, [supabase, allowList])
+  }, [allowList])
 
   const signInWithGoogle = async () => {
     setAuthError(null)
-    const { error } = await supabase.auth.signInWithOAuth({
+    const client = getSupabaseClient()
+    const { error } = await client.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: window.location.origin },
     })
     if (error) setAuthError(getOAuthErrorMessage(error.message))
   }
 
-  const signOut = async () => {
-    const { error } = await supabase.auth.signOut()
+  const handleSignOut = async () => {
+    const client = getSupabaseClient()
+    const { error } = await client.auth.signOut()
     if (error) setAuthError(error.message)
   }
 
@@ -155,6 +170,6 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
     isLoading,
     authError,
     signInWithGoogle,
-    signOut,
+    signOut: handleSignOut,
   }
 }
