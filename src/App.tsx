@@ -1,8 +1,8 @@
 import './App.css'
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
-import { AuthGate } from '@guille/auth-kit'
-import { useAuth } from '@guille/auth-kit'
+import { AuthGate } from './lib/auth-kit'
+import { useAuth } from './lib/auth-kit'
 
 const MapView = lazy(() => import('./components/MapView'))
 const Editor = lazy(() => import('./pages/Editor'))
