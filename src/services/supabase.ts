@@ -1,19 +1,7 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { getSupabaseClient } from '@guille/auth-kit'
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+// Shared singleton from auth-kit — reads VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.
+// AuthGate ensures the user is authenticated before any code that uses this runs.
+export const supabase = getSupabaseClient()
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    'Missing Supabase environment variables. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.'
-  )
-}
-
-// Use untyped client for flexibility until we generate types from Supabase
-export const supabase: SupabaseClient | null = supabaseUrl && supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null
-
-export const isSupabaseConfigured = (): boolean => {
-  return supabase !== null
-}
+export const isSupabaseConfigured = (): boolean => true

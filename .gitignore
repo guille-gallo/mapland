@@ -32,4 +32,17 @@ dist-ssr
 .env.production.local
 .vercel
 
+# EAS / Play Store / App Store Secrets
+**/google-service-account.json
+**/*.keystore
+!**/debug.keystore
+**/*.jks
+**/*.p12
+**/*.p8
+**/*.mobileprovision
+
+# Expo
+**/.expo/
+
 docs/TODO.md
+.env*.local
