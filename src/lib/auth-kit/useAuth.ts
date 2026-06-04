@@ -48,9 +48,13 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
-function cleanupOAuthHash(): void {
-  if (window.location.hash.includes('access_token=') || window.location.hash.includes('error=')) {
-    window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
+function cleanupOAuthUrl(): void {
+  const hash = window.location.hash
+  const search = window.location.search
+  const hasTokens = hash.includes('access_token=') || hash.includes('error=')
+  const hasCode = search.includes('code=')
+  if (hasTokens || hasCode) {
+    window.history.replaceState({}, document.title, window.location.pathname)
   }
 }
 
@@ -95,6 +99,8 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
     const urlError = extractUrlAuthError()
     if (urlError) setAuthError(urlError)
 
+    cleanupOAuthUrl()
+
     const client = getSupabaseClient()
 
     const { data: { subscription } } = client.auth.onAuthStateChange(async (_event, next) => {
@@ -116,7 +122,6 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
       }
 
       setIsLoading(false)
-      cleanupOAuthHash()
     })
 
     return () => {
