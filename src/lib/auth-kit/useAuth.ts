@@ -113,7 +113,6 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
     const urlError = extractUrlAuthError()
     if (urlError) setAuthError(urlError)
 
-    const pendingOAuth = hasOAuthParams()
     const client = getSupabaseClient()
 
     const { data: { subscription } } = client.auth.onAuthStateChange(async (_event, next) => {
@@ -130,17 +129,17 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
         }
         setSession(next)
         setAuthError(null)
-        stripOAuthParams()
       } else {
         setSession(next)
-        if (!pendingOAuth) {
-          setIsLoading(false)
+        if (hasOAuthParams()) {
+          return
         }
-        return
       }
 
       setIsLoading(false)
     })
+
+    stripOAuthParams()
 
     return () => {
       mounted = false
