@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
 import { getSupabaseClient } from './supabase'
 
@@ -48,6 +48,12 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
+function cleanupOAuthHash(): void {
+  if (window.location.hash.includes('access_token=') || window.location.hash.includes('error=')) {
+    window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
+  }
+}
+
 // ── Public types ─────────────────────────────────────
 
 export interface UseAuthOptions {
@@ -76,12 +82,12 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
   const [isLoading, setIsLoading] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
 
-  const allowList = (() => {
+  const allowList = useMemo(() => {
     if (options?.allowedEmails !== undefined) {
       return options.allowedEmails.map(normalizeEmail)
     }
     return parseAllowedEmails()
-  })()
+  }, [options?.allowedEmails])
 
   useEffect(() => {
     let mounted = true
@@ -89,34 +95,11 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
     const urlError = extractUrlAuthError()
     if (urlError) setAuthError(urlError)
 
-    const load = async () => {
-      const client = getSupabaseClient()
-      const { data, error } = await client.auth.getSession()
-      if (!mounted) return
-      if (error) {
-        setAuthError(error.message)
-      } else if (data.session?.user) {
-        const email = normalizeEmail(data.session.user.email ?? '')
-        if (allowList && !allowList.includes(email)) {
-          await client.auth.signOut()
-          setAuthError(`Access denied. ${email} is not authorized.`)
-          setSession(null)
-        } else {
-          setSession(data.session)
-        }
-      } else {
-        setSession(null)
-      }
-      if (window.location.hash.includes('access_token=')) {
-        window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
-      }
-      setIsLoading(false)
-    }
-    load()
-
     const client = getSupabaseClient()
-    const { data: sub } = client.auth.onAuthStateChange(async (_event, next) => {
+
+    const { data: { subscription } } = client.auth.onAuthStateChange(async (_event, next) => {
       if (!mounted) return
+
       if (next?.user) {
         const email = normalizeEmail(next.user.email ?? '')
         if (allowList && !allowList.includes(email)) {
@@ -126,29 +109,34 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
           setIsLoading(false)
           return
         }
+        setSession(next)
+        setAuthError(null)
+      } else {
+        setSession(next)
       }
-      setSession(next)
+
       setIsLoading(false)
-      setAuthError(null)
-      if (window.location.hash.includes('access_token=')) {
-        window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
-      }
+      cleanupOAuthHash()
     })
 
     return () => {
       mounted = false
-      sub.subscription.unsubscribe()
+      subscription.unsubscribe()
     }
   }, [allowList])
 
   const signInWithGoogle = async () => {
     setAuthError(null)
+    setIsLoading(true)
     const client = getSupabaseClient()
     const { error } = await client.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: window.location.origin },
     })
-    if (error) setAuthError(getOAuthErrorMessage(error.message))
+    if (error) {
+      setAuthError(getOAuthErrorMessage(error.message))
+      setIsLoading(false)
+    }
   }
 
   const handleSignOut = async () => {
