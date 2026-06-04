@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
-import { getSupabaseClient, resetSupabaseClient } from './supabase'
+import { getSupabaseClient } from './supabase'
 
 // ── Helpers ──────────────────────────────────────────
 
@@ -89,21 +89,13 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
     const urlError = extractUrlAuthError()
     if (urlError) setAuthError(urlError)
 
-    // If URL hash contains OAuth tokens, the singleton client may have been
-    // created before the hash was available. Force a fresh session check.
-    const hashHasTokens = window.location.hash.includes('access_token=')
-
     const load = async () => {
-      // When hash tokens are present but getSession returns null,
-      // reset the singleton so the next call parses the hash properly.
-      if (hashHasTokens) {
-        resetSupabaseClient()
-      }
       const client = getSupabaseClient()
       const { data, error } = await client.auth.getSession()
       if (!mounted) return
-      if (error) setAuthError(error.message)
-      else if (data.session?.user) {
+      if (error) {
+        setAuthError(error.message)
+      } else if (data.session?.user) {
         const email = normalizeEmail(data.session.user.email ?? '')
         if (allowList && !allowList.includes(email)) {
           await client.auth.signOut()
@@ -112,12 +104,11 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
         } else {
           setSession(data.session)
         }
-        // Clean up the hash fragment from the URL
-        if (window.location.hash.includes('access_token=')) {
-          window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
-        }
       } else {
         setSession(null)
+      }
+      if (window.location.hash.includes('access_token=')) {
+        window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
       }
       setIsLoading(false)
     }
@@ -139,6 +130,9 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
       setSession(next)
       setIsLoading(false)
       setAuthError(null)
+      if (window.location.hash.includes('access_token=')) {
+        window.history.replaceState({}, document.title, window.location.pathname + window.location.search)
+      }
     })
 
     return () => {

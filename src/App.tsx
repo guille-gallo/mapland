@@ -1,14 +1,12 @@
 import './App.css'
 import { lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
-import { AuthGate } from './lib/auth-kit'
-import { useAuth } from './lib/auth-kit'
+import { AuthScreen, useAuth } from './lib/auth-kit'
 
 const MapView = lazy(() => import('./components/MapView'))
 const Editor = lazy(() => import('./pages/Editor'))
 
-function Nav({ onSignOut }: { onSignOut: () => void }) {
-  const { displayName } = useAuth()
+function Nav({ displayName, onSignOut }: { displayName: string; onSignOut: () => void }) {
   return (
     <nav style={{ position: 'fixed', top: 8, right: 8, zIndex: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
       <Link 
@@ -63,20 +61,35 @@ function Nav({ onSignOut }: { onSignOut: () => void }) {
   )
 }
 
+const DefaultLoader = () => (
+  <div
+    style={{
+      display: 'grid',
+      placeItems: 'center',
+      height: '100vh',
+      fontSize: '1.25rem',
+      color: '#888',
+    }}
+  >
+    Loading…
+  </div>
+)
+
 export default function App() {
-  const { signOut } = useAuth()
+  const { session, isLoading, authError, displayName, signInWithGoogle, signOut } = useAuth()
+
+  if (isLoading) return <DefaultLoader />
+  if (!session) return <AuthScreen error={authError} onSignIn={signInWithGoogle} />
 
   return (
-    <AuthGate>
-      <BrowserRouter>
-        <Nav onSignOut={signOut} />
-        <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
-          <Routes>
-            <Route path="/" element={<MapView />} />
-            <Route path="/edit" element={<Editor />} />
-          </Routes>
-        </Suspense>
-      </BrowserRouter>
-    </AuthGate>
+    <BrowserRouter>
+      <Nav displayName={displayName} onSignOut={signOut} />
+      <Suspense fallback={<div style={{ padding: 16 }}>Loading…</div>}>
+        <Routes>
+          <Route path="/" element={<MapView />} />
+          <Route path="/edit" element={<Editor />} />
+        </Routes>
+      </Suspense>
+    </BrowserRouter>
   )
 }
