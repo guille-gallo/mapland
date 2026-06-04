@@ -48,13 +48,27 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
-function cleanupOAuthUrl(): void {
-  const hash = window.location.hash
-  const search = window.location.search
-  const hasTokens = hash.includes('access_token=') || hash.includes('error=')
-  const hasCode = search.includes('code=')
-  if (hasTokens || hasCode) {
-    window.history.replaceState({}, document.title, window.location.pathname)
+function hasOAuthParams(): boolean {
+  return window.location.hash.includes('access_token=') ||
+    window.location.search.includes('code=') ||
+    window.location.hash.includes('error=')
+}
+
+function stripOAuthParams(): void {
+  const url = new URL(window.location.href)
+  let changed = false
+  for (const key of [...url.searchParams.keys()]) {
+    if (key === 'code') {
+      url.searchParams.delete(key)
+      changed = true
+    }
+  }
+  if (url.hash.includes('access_token=') || url.hash.includes('error=')) {
+    url.hash = ''
+    changed = true
+  }
+  if (changed) {
+    window.history.replaceState({}, document.title, url.pathname + url.search + url.hash)
   }
 }
 
@@ -63,7 +77,7 @@ function cleanupOAuthUrl(): void {
 export interface UseAuthOptions {
   /**
    * Comma-separated allowlist of emails. If set, only these users can sign in.
-   * Reads from VITE_ALLOWED_EMAILS env by default.
+   * Reads from FITE_ALLOWED_EMAILS env by default.
    * Pass an empty array [] to allow everyone.
    */
   allowedEmails?: string[]
@@ -99,8 +113,7 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
     const urlError = extractUrlAuthError()
     if (urlError) setAuthError(urlError)
 
-    cleanupOAuthUrl()
-
+    const pendingOAuth = hasOAuthParams()
     const client = getSupabaseClient()
 
     const { data: { subscription } } = client.auth.onAuthStateChange(async (_event, next) => {
@@ -117,8 +130,13 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
         }
         setSession(next)
         setAuthError(null)
+        stripOAuthParams()
       } else {
         setSession(next)
+        if (!pendingOAuth) {
+          setIsLoading(false)
+        }
+        return
       }
 
       setIsLoading(false)
