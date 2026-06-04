@@ -27,7 +27,13 @@ export function getSupabaseClient(
     )
   }
 
-  _client = createClient(supabaseUrl, supabaseAnonKey)
+  _client = createClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      flowType: 'pkce',
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  })
   return _client
 }
 
