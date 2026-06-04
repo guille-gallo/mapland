@@ -48,12 +48,6 @@ function normalizeEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
-function hasOAuthParams(): boolean {
-  return window.location.hash.includes('access_token=') ||
-    window.location.search.includes('code=') ||
-    window.location.hash.includes('error=')
-}
-
 function stripOAuthParams(): void {
   const url = new URL(window.location.href)
   let changed = false
@@ -77,7 +71,7 @@ function stripOAuthParams(): void {
 export interface UseAuthOptions {
   /**
    * Comma-separated allowlist of emails. If set, only these users can sign in.
-   * Reads from FITE_ALLOWED_EMAILS env by default.
+   * Reads from VITE_ALLOWED_EMAILS env by default.
    * Pass an empty array [] to allow everyone.
    */
   allowedEmails?: string[]
@@ -113,6 +107,11 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
     const urlError = extractUrlAuthError()
     if (urlError) setAuthError(urlError)
 
+    const pendingOAuth =
+      window.location.search.includes('code=') ||
+      window.location.hash.includes('access_token=') ||
+      window.location.hash.includes('error=')
+
     const client = getSupabaseClient()
 
     const { data: { subscription } } = client.auth.onAuthStateChange(async (_event, next) => {
@@ -129,17 +128,14 @@ export function useAuth(options?: UseAuthOptions): UseAuthReturn {
         }
         setSession(next)
         setAuthError(null)
+        stripOAuthParams()
       } else {
         setSession(next)
-        if (hasOAuthParams()) {
-          return
-        }
+        if (pendingOAuth) return
       }
 
       setIsLoading(false)
     })
-
-    stripOAuthParams()
 
     return () => {
       mounted = false
