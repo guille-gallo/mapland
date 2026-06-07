@@ -1,2 +1,8 @@
 allowBuilds:
   esbuild: true
+
+# Allow the just-published @guille-gallo/auth-kit while pnpm's
+# minimumReleaseAge (24h) catches up to the new version. Remove
+# once auth-kit@0.1.0 is older than 24h on the registry.
+minimumReleaseAgeExclude:
+  - '@guille-gallo/auth-kit@0.1.0'
